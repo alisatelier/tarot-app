@@ -14,6 +14,34 @@ import {
   type Colorway,
 } from "../../lib/tarot/cards";
 
+// percent units, relative to canvas
+type Win = { x: number; y: number; w: number; h: number };
+
+// Windows for 5‑card spreads (two rows, 3 on top and 2 below)
+// Tweak these to match your artwork “windows”
+const WINDOWS_5: Win[] = [
+  // top row (3)
+  { x: 18, y: 18, w: 14, h: 26 }, // #1 (left top)
+  { x: 43, y: 18, w: 14, h: 26 }, // #2 (center top)
+  { x: 68, y: 18, w: 14, h: 26 }, // #3 (right top)
+  // bottom row (2)
+  { x: 30, y: 54, w: 14, h: 26 }, // #4 (left bottom)
+  { x: 56, y: 54, w: 14, h: 26 }, // #5 (right bottom)
+];
+
+// Windows for 3‑card spreads (straight line)
+const WINDOWS_3: Win[] = [
+  { x: 43, y: 20, w: 14, h: 26 }, // #1 left
+  { x: 20, y: 55, w: 14, h: 26 }, // #2 center
+  { x: 66, y: 55, w: 14, h: 26 }, // #3 right
+];
+
+function windowCenterTarget(win: Win, W: number, H: number) {
+  const cx = ((win.x + win.w / 2) / 100) * W;
+  const cy = ((win.y + win.h / 2) / 100) * H;
+  return { x: cx, y: cy, angle: 0 };
+}
+
 // Choose desktop vs mobile image by current renderer size (matches Pink/Grey filename case)
 function bgPath(colorway: "pink" | "grey", w: number, h: number) {
   const variant = w >= h ? "Desktop" : "Mobile"; // Capitalized
@@ -124,6 +152,9 @@ export default function TarotCanvas() {
       if (destroyed) return;
 
       appRef.current = app;
+
+      app.stage.sortableChildren = true;
+
       containerRef.current!.appendChild(app.view as HTMLCanvasElement);
 
       // Keep a local variable but also mirror it to bgRef so other effects can see it
@@ -230,11 +261,11 @@ export default function TarotCanvas() {
   function computeHoroscopeTargets(app: PIXI.Application) {
     const W = app.renderer.width;
     const H = app.renderer.height;
-    const isDesktop = W >= 768; // tweak breakpoint as you like
+
+    const isDesktop = W >= 768;
     const cols = isDesktop ? 6 : 3;
     const rows = isDesktop ? 2 : 4;
 
-    // grid padding as % of canvas
     const padX = 8; // %
     const padY = 8; // %
     const cellW = (100 - padX * 2) / cols;
@@ -296,193 +327,182 @@ export default function TarotCanvas() {
   }
 
   // --- Deal flow ---
-  async function dealToSpread() {
-    if (!appRef.current || !engineRef.current || !deckBodyRef.current) return;
-    if (ALL_CARD_IDS.length === 0) {
-      console.error(
-        "[Tarot] No cards found. Fill CARDS_CATALOG in src/lib/tarot/cards.ts"
-      );
-      alert("No cards found. Please add cards to your deck.");
-      return;
+async function dealToSpread() {
+  if (!appRef.current || !engineRef.current || !deckBodyRef.current) return;
+  if (ALL_CARD_IDS.length === 0) {
+    console.error("[Tarot] No cards found. Fill CARDS_CATALOG in src/lib/tarot/cards.ts");
+    alert("No cards found. Please add cards to your deck.");
+    return;
+  }
+  if (dealing) return;
+
+  // Turn on gradient mode (one-time each deal)
+  usingGradientRef.current = true;
+  gradientFromRef.current = 0x000000; // black
+  gradientToRef.current   = 0x535b73; // brand navy
+
+  const pixiApp = appRef.current!;
+
+  // Remove cloth if present and draw gradient
+  if (bgRef.current) {
+    pixiApp.stage.removeChild(bgRef.current);
+    bgRef.current.destroy(true);
+    bgRef.current = null;
+  }
+  drawGradientBg(pixiApp, gradientFromRef.current, gradientToRef.current);
+
+  setDealing(true);
+
+  // ---------- Clear previous ----------
+  for (const s of spritesRef.current) {
+    s.front.destroy();
+    s.back.destroy();
+    s.clip.destroy();
+    Composite.remove(engineRef.current!.world, s.body);
+  }
+  spritesRef.current = [];
+
+  // ---------- Seed + pick ----------
+  const seedStr = getSeed();
+  setSeed(seedStr);
+  const picks = pickCardsDeterministic(seedStr, spread.slots.length);
+
+  const newAssignments = picks.map((p, i) => ({
+    slotKey: spread.slots[i].key,
+    cardId: p.id,
+    reversed: p.reversed,
+  }));
+  setAssignments(newAssignments);
+
+  // Preload the textures we’ll use
+  const urlsToLoad = [
+    backSrcFor(colorway),
+    ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
+  ];
+  await PIXI.Assets.load(urlsToLoad);
+
+  // ---------- helpers ----------
+  const deck = deckBodyRef.current!;
+  const defaultCardW = 120;
+  const defaultCardH = 180;
+
+  // create one card entity at the deck position
+  const makeCard = (
+    cardId: string,
+    reversed: boolean,
+    slotKey: string,
+    dealIndex: number,
+    cardW = defaultCardW,
+    cardH = defaultCardH
+  ) => {
+    const body = Bodies.rectangle(deck.position.x, deck.position.y, cardW, cardH, {
+      frictionAir: 0.16,
+      isSensor: true,                                // no collisions while moving
+      collisionFilter: { group: -1, category: 0, mask: 0 },
+    });
+    Composite.add(engineRef.current!.world, body);
+
+    const corner = Math.min(cardW, cardH) * 0.12;
+
+    const front = new PIXI.Sprite(PIXI.Texture.from(frontSrcFor(cardId, colorway)));
+    const back  = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
+    for (const spr of [front, back]) {
+      spr.anchor.set(0.5);
+      spr.width = cardW;
+      spr.height = cardH;
+      spr.visible = false;                  // start face-down
+      spr.zIndex = 100 + dealIndex * 3;     // stable stacking
+      pixiApp.stage.addChild(spr);
     }
-    if (dealing) return;
-    // Change backdrop gradient when deal starts
-    if (dealing) return;
 
-    // turn on gradient mode
-    usingGradientRef.current = true;
-    gradientFromRef.current = 0x000000; // black
-    gradientToRef.current = 0x535b73; // your navy
+    // rounded mask (no border)
+    const clip = new PIXI.Graphics();
+    clip.roundRect(-cardW/2, -cardH/2, cardW, cardH, corner).fill(0xffffff);
+    clip.alpha = 0;
+    clip.zIndex = 100 + dealIndex * 3 + 1;
+    pixiApp.stage.addChild(clip);
 
-    const app = appRef.current!;
+    front.mask = clip;
+    back.mask  = clip;
 
-    // remove cloth if present
-    if (bgRef.current) {
-      app.stage.removeChild(bgRef.current);
-      bgRef.current.destroy(true);
-      bgRef.current = null;
-    }
-
-    // draw gradient backdrop
-    drawGradientBg(app, gradientFromRef.current, gradientToRef.current);
-
-    setDealing(true);
-
-    setDealing(true);
-
-    // Clear previous
-    for (const s of spritesRef.current) {
-      s.front.destroy();
-      s.back.destroy();
-      s.frame.destroy();
-      s.clip.destroy();
-      Composite.remove(engineRef.current!.world, s.body);
-    }
-
-    spritesRef.current = [];
-
-    // Seed + pick
-    const s = getSeed();
-    setSeed(s);
-    const picks = pickCardsDeterministic(s, spread.slots.length);
-    const newAssignments = picks.map((p, i) => ({
-      slotKey: spread.slots[i].key,
-      cardId: p.id,
-      reversed: p.reversed,
-    }));
-    setAssignments(newAssignments);
-
-    const urlsToLoad = [
-      backSrcFor(colorway),
-      ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
-    ];
-    // Wait until all textures are ready (Pixi v7)
-    await PIXI.Assets.load(urlsToLoad);
-
-    // Create + tween to slots
-    const pixiApp = appRef.current!;
-    const deck = deckBodyRef.current!;
-    const cardW = 120,
-      cardH = 180;
-
-    // 1) makeCard: build one card (sprites + rounded mask + border), starting at deck
-    const makeCard = (cardId: string, reversed: boolean, slotKey: string) => {
-      const body = Bodies.rectangle(
-        deck.position.x,
-        deck.position.y,
-        cardW,
-        cardH,
-        {
-          frictionAir: 0.14,
-        }
-      );
-      Composite.add(engineRef.current!.world, body);
-
-      const corner = 16; // rounded-xl
-      const strokeWidth = 4; // brand navy
-
-      const front = new PIXI.Sprite(
-        PIXI.Texture.from(frontSrcFor(cardId, colorway))
-      );
-      const back = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
-
-      // center and size sprites
-      for (const spr of [front, back]) {
-        spr.anchor.set(0.5);
-        spr.width = cardW;
-        spr.height = cardH;
-        spr.visible = false; // start face-down
-        pixiApp.stage.addChild(spr);
-      }
-
-      // mask (clip)
-      const clip = new PIXI.Graphics();
-      clip
-        .roundRect(-cardW / 2, -cardH / 2, cardW, cardH, corner)
-        .fill(0xffffff);
-      clip.alpha = 0;
-      pixiApp.stage.addChild(clip);
-
-
-      front.mask = clip;
-      back.mask = clip;
-
-      const entity: SpriteEntity = {
-        body,
-        front,
-        back,
-        clip,
-        isFaceUp: false,
-        reversed,
-        slotKey,
-      };
-      spritesRef.current.push(entity);
-      return entity;
+    const entity: SpriteEntity = {
+      body,
+      cardId,
+      front,
+      back,
+      clip,
+      isFaceUp: false,
+      reversed,
+      slotKey,
     };
+    spritesRef.current.push(entity);
+    return entity;
+  };
 
-    // 2) tween: move one card to its target
-    const tween = (
-      entity: SpriteEntity,
-      target: { x: number; y: number; angle?: number },
-      ms = 700
-    ) =>
-      new Promise<void>((resolve) => {
-        const body = entity.body;
-        const start = performance.now();
-        const sx = body.position.x,
-          sy = body.position.y,
-          sa = body.angle;
-        const ta = target.angle ?? sa;
+  // tween one card body to a target, then lock static
+  const tween = (
+    entity: SpriteEntity,
+    target: { x: number; y: number; angle?: number },
+    ms = 700
+  ) =>
+    new Promise<void>((resolve) => {
+      const body = entity.body;
+      const start = performance.now();
+      const sx = body.position.x;
+      const sy = body.position.y;
+      const sa = body.angle;
+      const ta = target.angle ?? sa;
 
-        const step = (now: number) => {
-          const t = Math.min(1, (now - start) / ms);
-          const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          Body.setPosition(body, {
-            x: sx + (target.x - sx) * ease,
-            y: sy + (target.y - sy) * ease,
-          });
-          Body.setAngle(body, sa + (ta - sa) * ease);
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        Body.setPosition(body, {
+          x: sx + (target.x - sx) * ease,
+          y: sy + (target.y - sy) * ease,
+        });
+        Body.setAngle(body, sa + (ta - sa) * ease);
 
-          if (t < 1) requestAnimationFrame(step);
-          else {
-            // lock card so it won’t drift
-            Body.setVelocity(body, { x: 0, y: 0 });
-            Body.setAngularVelocity(body, 0);
-            Body.setStatic(body, true);
-            resolve();
-          }
-        };
-        requestAnimationFrame(step);
-      });
-
-    // 3) compute targets (spread vs horoscope grid)
-    const W = app.renderer.width;
-    const H = app.renderer.height;
-    const toXY = (xp: number, yp: number) => ({
-      x: (xp / 100) * W,
-      y: (yp / 100) * H,
+        if (t < 1) requestAnimationFrame(step);
+        else {
+          Body.setVelocity(body, { x: 0, y: 0 });
+          Body.setAngularVelocity(body, 0);
+          Body.setStatic(body, true);       // stop drift
+          resolve();
+        }
+      };
+      requestAnimationFrame(step);
     });
 
-    let targets: { x: number; y: number; angle?: number }[] = [];
-    if (spread.id === "horoscope-12") {
-      targets = computeHoroscopeTargets(app); // returns 12 items
-    } else {
-      targets = spread.slots.map((s) => ({
-        ...toXY(s.xPerc, s.yPerc),
-        angle: s.angle ?? 0,
-      }));
-    }
+  // ---------- build targets (triangle/5/12/fallback) ----------
+  const W = pixiApp.renderer.width;
+  const H = pixiApp.renderer.height;
 
-    // 4) single loop: create → show back → tween → next
-    for (let i = 0; i < spread.slots.length; i++) {
-      const { slotKey, cardId, reversed } = newAssignments[i];
-      const card = makeCard(cardId, reversed, slotKey);
-      card.back.visible = true; // start face-down
-      await tween(card, targets[i], 650);
-    }
-
-    setDealing(false);
+  let targets: { x: number; y: number; angle?: number }[] = [];
+  if (spread.id === "horoscope-12") {
+    targets = computeHoroscopeTargets(pixiApp);
+  } else if (spread.slots.length === 5 && typeof windowCenterTarget === "function") {
+    targets = WINDOWS_5.map((win) => windowCenterTarget(win, W, H));
+  } else if (spread.slots.length === 3 && typeof windowCenterTarget === "function") {
+    targets = WINDOWS_3.map((win) => windowCenterTarget(win, W, H));
+  } else {
+    // fallback to percentages on the spread
+    targets = spread.slots.map((s) => ({
+      x: (s.xPerc / 100) * W,
+      y: (s.yPerc / 100) * H,
+      angle: s.angle ?? 0,
+    }));
   }
+
+  // ---------- create → show back → tween (stable order) ----------
+  for (let i = 0; i < spread.slots.length; i++) {
+    const { slotKey, cardId, reversed } = newAssignments[i];
+    const card = makeCard(cardId, reversed, slotKey, i);
+    card.back.visible = true;
+    await tween(card, targets[i], 650);
+  }
+
+  setDealing(false);
+}
 
   // --- Flip handler (this is the one that was easy to delete) ---
   useEffect(() => {

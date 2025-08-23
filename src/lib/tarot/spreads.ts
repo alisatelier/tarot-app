@@ -85,6 +85,16 @@ export function currentSeasonIndex(d: Date = new Date()) {
   return idx;
 }
 
+// in spreads.ts
+slots: [
+  { key: "pos1", xPerc: 20, yPerc: 50, order: 1 },
+  { key: "pos2", xPerc: 40, yPerc: 50, order: 2 },
+  { key: "pos3", xPerc: 60, yPerc: 50, order: 3 },
+  { key: "pos4", xPerc: 80, yPerc: 40, order: 4 },
+  { key: "pos5", xPerc: 80, yPerc: 60, order: 5 },
+]
+
+
 export function horoscopeSpreadDef(startFromSeason = currentSeasonIndex()) {
   // Rotate Aries→Pisces so the first slot is "current season"
   const rotated = [...ZODIAC.slice(startFromSeason), ...ZODIAC.slice(0, startFromSeason)];
