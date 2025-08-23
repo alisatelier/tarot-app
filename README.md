@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Whims & Whispers Tarot Auto-Spread
 
-## Getting Started
 
-First, run the development server:
+The goal of this project is to develop a web-based application to streamline and enhance the process of conducting online tarot readings. The tool will allow a tarot reader (the admin) to input the client's question, select a tarot spread, search and assign cards to specific positions, and present the reading visually and interactively to the client.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Core Features
+#### Admin Dashboard (Reader's Side)
+- Client Question Input
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+  - A form field to enter the question or intention the client has asked about.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+  - Spread Selection
+- Ability to choose from six predefined spread templates:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   -  Three 3-Card Spreads 
 
-## Learn More
+   -  Three 5-Card Spreads 
 
-To learn more about Next.js, take a look at the following resources:
+- Card Search & Assignment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+  - A searchable tarot card database.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+  - Ability to select and assign specific cards to specific positions in the chosen spread.
 
-## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+#### Client-Facing Display (Reading Interface)
+- Dynamic Card Layout
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+  - Cards appear on-screen based on the selected spread (3 or 5 cards).
+
+  - Each card is placed in its assigned position.
+
+- Interactive Reveal
+  - Cards are shown face-down initially.
+
+  - Click to flip each card, one at a time.
+
+- On flip, the card reveals:
+
+    The card's image (upright or reversed).
+
+    The card's meaning (pulled from the database)
+
+
+#### Nice to Haves:
+
+- Admin dashboard mobile friendly.  
+- Ability to save/export the reading as a report and email to client.
