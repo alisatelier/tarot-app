@@ -14,8 +14,6 @@ import {
   type Colorway,
 } from "../../lib/tarot/cards";
 
-
-
 // percent units, relative to canvas
 type Win = { x: number; y: number; w: number; h: number };
 
@@ -42,11 +40,13 @@ function windowCenterTarget(win: Win, W: number, H: number) {
   const cx = ((win.x + win.w / 2) / 100) * W;
   const cy = ((win.y + win.h / 2) / 100) * H;
   return { x: cx, y: cy, angle: 0 };
-  function zoomScaleTarget() {
-    // Big zoom on desktop, gentler on small screens
-    const w = appRef.current?.renderer.width ?? window.innerWidth;
-    return w < 560 ? 1.22 : 1.5; // tweak to taste
-  }
+}
+//zoom on hover
+function zoomScaleTarget() {
+  const w = window.innerWidth;
+  if (w < 560) return 2.0; // phones - increased from 1.3
+  if (w < 1024) return 2.5; // tablets - increased from 1.5
+  return 3.0; // desktop - increased from 1.8
 }
 
 // Choose desktop vs mobile image by current renderer size (matches Pink/Grey filename case)
@@ -54,14 +54,6 @@ function bgPath(colorway: "pink" | "grey", w: number, h: number) {
   const variant = w >= h ? "Desktop" : "Mobile"; // Capitalized
   const tone = colorway === "pink" ? "Pink" : "Grey"; // Capitalized
   return `/cards/canvas/${tone}-${variant}.png`;
-}
-
-//zoom on hover
-function zoomScaleTarget() {
-  const w = window.innerWidth;
-  if (w < 560) return 1.3; // phones
-  if (w < 1024) return 1.5; // tablets
-  return 1.8; // desktop
 }
 
 // Generic RAF tween helper
@@ -112,6 +104,7 @@ type SpriteEntity = {
   isFaceUp: boolean;
   reversed: boolean;
   slotKey: string;
+  zoomState: 'normal' | 'zoomed'; // Track zoom state for click cycling
 };
 
 function pickCardsDeterministic(seedStr: string, n: number) {
@@ -146,7 +139,8 @@ export default function TarotCanvas() {
   const cleanupRef = useRef<(() => void) | null>(null);
   const [seed, setSeed] = useState<string | null>(null);
   const flippingRef = useRef<Set<SpriteEntity>>(new Set());
-  const hoverAnimRef = useRef<Map<SpriteEntity, number>>(new Map());
+  const hoverAnimRef = useRef<Map<SpriteEntity, number>>(new Map()); // Reuse for zoom animations
+  const currentZoomedCardRef = useRef<SpriteEntity | null>(null); // Track which card is currently zoomed
 
   // Store
   const {
@@ -167,76 +161,126 @@ export default function TarotCanvas() {
     setColorway,
   } = useTarotStore();
 
-  function hoverIn(
-    entity: SpriteEntity,
-    scaleTarget = zoomScaleTarget(), // uses helper
-    liftPx = -20,
-    ms = 180
-  ) {
-    if (!entity.isFaceUp) return; // only zoom when face-up
-
-    const map = hoverAnimRef.current;
-    const cancel = map.get(entity);
-    if (cancel) cancelAnimationFrame(cancel);
-
-    const v = entity.view;
-    const fromScale = v.scale.x; // uniform scale on container
-    const fromY = v.position.y;
-    const toScale = scaleTarget;
-    const toY = fromY + liftPx;
-
-    const cancelId = (() => {
-      const start = performance.now();
-      let raf = 0;
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / ms);
-        const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOutQuad
-        const s = fromScale + (toScale - fromScale) * e;
-        const y = fromY + (toY - fromY) * e;
-        v.scale.set(s, s);
-        v.position.y = y;
-        if (t < 1) raf = requestAnimationFrame(step);
-        else map.delete(entity);
-      };
-      raf = requestAnimationFrame(step);
-      return raf;
-    })();
-
-    map.set(entity, cancelId);
-    // Keep hovered card on top
-    v.zIndex = 10000;
+  function handleCardClick(entity: SpriteEntity) {
+    if (useTarotStore.getState().dealing) return;
+    
+    // If there's already a zoomed card that's not this one, zoom it out first
+    const currentZoomed = currentZoomedCardRef.current;
+    if (currentZoomed && currentZoomed !== entity && currentZoomed.zoomState === 'zoomed') {
+      zoomToCard(currentZoomed, false);
+      showAllCards();
+      currentZoomedCardRef.current = null;
+    }
+    
+    if (!entity.isFaceUp) {
+      // First click: Flip to reveal the card
+      flipEntity(entity, 260);
+    } else if (entity.zoomState === 'normal') {
+      // Second click: Zoom in and hide other cards
+      zoomToCard(entity, true);
+      hideOtherCards(entity);
+      currentZoomedCardRef.current = entity;
+    } else {
+      // Third click: Zoom out and show all cards
+      zoomToCard(entity, false);
+      showAllCards();
+      currentZoomedCardRef.current = null;
+    }
   }
 
-  function hoverOut(entity: SpriteEntity, ms = 140) {
-    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+  function hideOtherCards(zoomedEntity: SpriteEntity, ms = 300) {
+    for (const entity of spritesRef.current) {
+      if (entity === zoomedEntity) continue; // Skip the zoomed card
+      
+      const v = entity.view;
+      const fromAlpha = v.alpha;
+      const toAlpha = 0; // Fade to invisible
+      
+      if (fromAlpha === toAlpha) return; // Already hidden
+      
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        v.alpha = fromAlpha + (toAlpha - fromAlpha) * e;
+        if (t < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+  }
 
+  function showAllCards(ms = 300) {
+    for (const entity of spritesRef.current) {
+      const v = entity.view;
+      const fromAlpha = v.alpha;
+      const toAlpha = 1; // Fade to fully visible
+      
+      if (fromAlpha === toAlpha) continue; // Already visible, skip animation
+      
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        v.alpha = fromAlpha + (toAlpha - fromAlpha) * e;
+        if (t < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+  }
+
+  function zoomToCard(entity: SpriteEntity, zoomIn: boolean, ms = 300) {
     const map = hoverAnimRef.current;
     const cancel = map.get(entity);
     if (cancel) cancelAnimationFrame(cancel);
 
     const v = entity.view;
+    const app = appRef.current;
+    if (!app) return;
+
     const fromScale = v.scale.x;
+    const fromX = v.position.x;
     const fromY = v.position.y;
-    const toScale = 1;
-    // approximate lift reversal so the card returns to its original Y
-    const toY = fromY - (fromScale - 1) * 55;
+
+    let toScale: number;
+    let toX: number;
+    let toY: number;
+
+    if (zoomIn) {
+      // Zoom in: move to exact center and scale up
+      toScale = 1.8; // Moderate zoom that fits in canvas
+      toX = app.renderer.width / 2;
+      toY = app.renderer.height / 2;
+      entity.zoomState = 'zoomed';
+    } else {
+      // Zoom out: return to original position
+      const body = entity.body;
+      toScale = 1;
+      toX = (body as any).position.x;
+      toY = (body as any).position.y;
+      entity.zoomState = 'normal';
+    }
 
     const cancelId = (() => {
       const start = performance.now();
       let raf = 0;
       const step = (now: number) => {
         const t = Math.min(1, (now - start) / ms);
-        const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
         const s = fromScale + (toScale - fromScale) * e;
+        const x = fromX + (toX - fromX) * e;
         const y = fromY + (toY - fromY) * e;
         v.scale.set(s, s);
+        // Ensure the card's CENTER is positioned at the target coordinates
+        v.position.x = x;
         v.position.y = y;
         if (t < 1) raf = requestAnimationFrame(step);
         else {
-          map.delete(entity);
-          // drop back toward original stacking (but keep stable)
-          if (!flippingRef.current.has(entity))
-            v.zIndex = Math.max(v.zIndex, 100);
+          // Only remove from animation map if zooming out, keep zoomed cards in map
+          if (!zoomIn) {
+            map.delete(entity);
+          }
         }
       };
       raf = requestAnimationFrame(step);
@@ -244,6 +288,16 @@ export default function TarotCanvas() {
     })();
 
     map.set(entity, cancelId);
+    
+    // Keep zoomed card on top
+    if (zoomIn) {
+      v.zIndex = 999999;
+      if (v.parent) {
+        v.parent.setChildIndex(v, v.parent.children.length - 1);
+      }
+    } else {
+      v.zIndex = 100;
+    }
   }
 
   // --- PIXI + Matter init (Pixi v7 async) ---
@@ -254,18 +308,24 @@ export default function TarotCanvas() {
 
     (async () => {
       const app = new PIXI.Application();
-      await app.init({ backgroundAlpha: 0 }); // v7 async init
-      // Preload BG variants using Pixi v7 Assets loader
-      const bgUrls = [
+      await app.init({
+        backgroundAlpha: 0,
+        antialias: true,
+        resolution: window.devicePixelRatio || 1, // Use full device pixel ratio
+        autoDensity: true, // Automatically adjust canvas CSS size
+      });
+
+      console.log("[TarotCanvas] PixiJS app initialized", app);
+
+      // BGs:
+      await PIXI.Assets.load([
         "/cards/canvas/Pink-Desktop.png",
         "/cards/canvas/Pink-Mobile.png",
         "/cards/canvas/Grey-Desktop.png",
         "/cards/canvas/Grey-Mobile.png",
-      ];
+      ]);
 
-      // This returns an array of Textures (one per URL) and waits until all are ready
-      await PIXI.Assets.load(bgUrls);
-
+      // Backs + all fronts for current deck:
       const cw = useTarotStore.getState().colorway;
       await PIXI.Assets.load([
         backSrcFor("pink"),
@@ -284,14 +344,24 @@ export default function TarotCanvas() {
 
       app.stage.sortableChildren = true;
 
-      containerRef.current!.appendChild(app.view as HTMLCanvasElement);
+      if (containerRef.current) {
+        console.log("[TarotCanvas] Appending canvas to container", containerRef.current, app.view);
+        containerRef.current.appendChild(app.view as HTMLCanvasElement);
+      } else {
+        console.warn("[TarotCanvas] containerRef.current is null when appending canvas");
+      }
+
+      // NEW: enforce CSS sizing for the canvas element
+      const canvasEl = app.view as HTMLCanvasElement;
+      canvasEl.style.display = "block";
+      canvasEl.style.width = "100%";
+      canvasEl.style.height = "100%";
 
       // Keep a local variable but also mirror it to bgRef so other effects can see it
       let bgSprite: PIXI.Sprite | null = null;
 
       const mountOrUpdateBg = () => {
-        if (usingGradientRef.current) return; // skip cloth if gradient active
-
+        if (usingGradientRef.current) return;
         const w = app.renderer.width;
         const h = app.renderer.height;
         const url = bgPath(useTarotStore.getState().colorway, w, h);
@@ -307,18 +377,22 @@ export default function TarotCanvas() {
         bgRef.current = bgSprite;
       };
 
-      const resize = () => {
-        const el = containerRef.current!;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        app.renderer.resolution = dpr;
-        app.renderer.resize(el.clientWidth, el.clientHeight);
-
+      const ensureBackdrop = () => {
         if (usingGradientRef.current) {
           drawGradientBg(app, gradientFromRef.current, gradientToRef.current);
         } else {
           mountOrUpdateBg();
         }
       };
+
+      const resize = () => {
+        const el = containerRef.current!;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        app.renderer.resolution = dpr;
+        app.renderer.resize(el.clientWidth, el.clientHeight);
+
+        ensureBackdrop();
+      }; //  <-- this brace was missing
 
       resize();
       const ro = new ResizeObserver(resize);
@@ -339,7 +413,7 @@ export default function TarotCanvas() {
       Composite.add(engine.world, walls);
 
       // Deck position (bottom-left-ish)
-      const deck = Bodies.rectangle(w * 0.18, h * 0.8, 120, 180, {
+      const deck = Bodies.rectangle(w * 0.18, h * 0.8, 200, 300, {
         isStatic: true,
       });
       deckBodyRef.current = deck;
@@ -348,11 +422,14 @@ export default function TarotCanvas() {
       // Sync loop
       app.ticker.add(() => {
         for (const s of spritesRef.current) {
-          const { x, y } = s.body.position;
-          const angle = s.body.angle;
+          const { x, y } = (s.body as any).position;
+          const angle = (s.body as any).angle;
 
-          // position/rotate the container
-          s.view.position.set(x, y);
+          // Only sync position if not currently being animated (let zoom animation control position)
+          if (!hoverAnimRef.current.has(s)) {
+            s.view.position.set(x, y);
+          }
+          
           const rot = s.reversed ? angle + Math.PI : angle;
           s.view.rotation = rot;
 
@@ -384,7 +461,7 @@ export default function TarotCanvas() {
       };
       cleanupRef.current = cleanup;
     })();
-
+  
     return () => {
       destroyed = true;
       if (cleanupRef.current) cleanupRef.current();
@@ -489,6 +566,9 @@ export default function TarotCanvas() {
 
     setDealing(true);
 
+    // Reset zoom state
+    currentZoomedCardRef.current = null;
+
     // ---------- Clear previous ----------
     for (const s of spritesRef.current) {
       const cancel = hoverAnimRef.current.get(s);
@@ -522,8 +602,8 @@ export default function TarotCanvas() {
 
     // ---------- helpers ----------
     const deck = deckBodyRef.current!;
-    const defaultCardW = 120;
-    const defaultCardH = 180;
+    const defaultCardW = 200; // Increased from 120 for better text readability
+    const defaultCardH = 300; // Increased from 180 for better text readability
 
     // create one card entity at the deck position
     const makeCard = (
@@ -535,8 +615,8 @@ export default function TarotCanvas() {
       cardH = defaultCardH
     ) => {
       const body = Bodies.rectangle(
-        deck.position.x,
-        deck.position.y,
+        (deck as any).position.x,
+        (deck as any).position.y,
         cardW,
         cardH,
         {
@@ -557,10 +637,23 @@ export default function TarotCanvas() {
       pixiApp.stage.addChild(view);
 
       // Front/back sprites centered in the container
-      const front = new PIXI.Sprite(
-        PIXI.Texture.from(frontSrcFor(cardId, colorway))
-      );
-      const back = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
+      // build textures
+      const frontTex = PIXI.Texture.from(frontSrcFor(cardId, colorway));
+      frontTex.source.scaleMode = 'linear'; // Smooth scaling instead of pixelated
+
+      const backTex = PIXI.Texture.from(backSrcFor(colorway));
+      backTex.source.scaleMode = 'linear';
+
+      const front = new PIXI.Sprite(frontTex);
+      const back = new PIXI.Sprite(backTex);
+
+      front.anchor.set(0.5);
+      back.anchor.set(0.5);
+      front.width = cardW;
+      front.height = cardH;
+      back.width = cardW;
+      back.height = cardH;
+
       for (const spr of [front, back]) {
         spr.anchor.set(0.5);
         spr.width = cardW;
@@ -590,17 +683,15 @@ export default function TarotCanvas() {
         isFaceUp: false,
         reversed,
         slotKey,
+        zoomState: 'normal',
       };
       spritesRef.current.push(entity);
 
-      // Per-card click flips the container
+      // Simple click interaction for card cycling
       view.on("pointerdown", () => {
-        if (useTarotStore.getState().dealing) return;
-        flipEntity(entity, 260);
+        handleCardClick(entity);
       });
-      // Hover interactions (desktop/mouse only; pointer events still unified)
-      view.on("pointerover", () => hoverIn(entity));
-      view.on("pointerout", () => hoverOut(entity));
+
       view.cursor = "pointer";
 
       return entity;
@@ -615,9 +706,9 @@ export default function TarotCanvas() {
       new Promise<void>((resolve) => {
         const body = entity.body;
         const start = performance.now();
-        const sx = body.position.x;
-        const sy = body.position.y;
-        const sa = body.angle;
+        const sx = (body as any).position.x;
+        const sy = (body as any).position.y;
+        const sa = (body as any).angle;
         const ta = target.angle ?? sa;
 
         const step = (now: number) => {
@@ -682,10 +773,16 @@ export default function TarotCanvas() {
     if (flipping.has(entity)) return;
     flipping.add(entity);
 
-    // Cancel any hover zoom and normalize first
-    hoverOut(entity, 80); // quick settle
+    // Cancel any zoom animation and normalize scale first
+    const cancel = hoverAnimRef.current.get(entity);
+    if (cancel) {
+      cancelAnimationFrame(cancel);
+      hoverAnimRef.current.delete(entity);
+    }
+    
     const view = entity.view;
     view.scale.set(1, 1); // normalize scale before flip
+    entity.zoomState = 'normal'; // Reset zoom state
 
     const start = performance.now();
     const half = ms * 0.5;
@@ -722,6 +819,17 @@ export default function TarotCanvas() {
 
     const onPointer = (e: PIXI.FederatedPointerEvent) => {
       if (useTarotStore.getState().dealing) return; // optional: block during dealing
+      
+      // Check if there's a zoomed card - if so, zoom out on ANY click anywhere
+      const currentZoomed = currentZoomedCardRef.current;
+      if (currentZoomed && currentZoomed.zoomState === 'zoomed') {
+        zoomToCard(currentZoomed, false);
+        showAllCards();
+        currentZoomedCardRef.current = null;
+        return; // Don't process other click behavior when zooming out
+      }
+      
+      // Normal click handling for non-zoomed state
       const pos = e.global;
 
       // topmost first
@@ -737,7 +845,8 @@ export default function TarotCanvas() {
           pos.y >= b.y &&
           pos.y <= b.y + b.height
         ) {
-          flipEntity(s, 260);
+          // Use the new card click handler
+          handleCardClick(s);
           break;
         }
       }
@@ -917,7 +1026,7 @@ export default function TarotCanvas() {
         className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
       />
       <p className="mt-3 text-sm text-neutral-600">
-        Tip: Tap/click a card to flip.
+        Tip: Click a card to reveal → click again to zoom → click anywhere to return to full spread.
       </p>
     </div>
   );
