@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
-const TarotCanvas = dynamic(() => import("@/components/tarot/TarotCanvas"), {
+const TarotCanvas = dynamic(() => import("../components/tarot/TarotCanvas"), {
   ssr: false,
   loading: () => (
     <div className="card p-6">
