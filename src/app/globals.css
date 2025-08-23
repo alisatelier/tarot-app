@@ -1,26 +1,142 @@
 @import "tailwindcss";
 
+/* ---------- CSS Variables ---------- */
 :root {
+  /* Base palette */
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Brand colors */
+  --brand-navy: #535B73;        /* your navy */
+  --brand-lightpink: #F2E9E9;
+  --brand-pink: #FEDDE8;
+  --brand-darkpink: #FECFE0;
+  --brand-grey: #A69FA5;
+
+  /* Surfaces & accents (light) */
+  --panel: rgba(255, 255, 255, 0.65);
+  --panel-border: rgba(0, 0, 0, 0.08);
+  --ink-70: rgba(23, 23, 23, 0.7);
+  --ink-50: rgba(23, 23, 23, 0.5);
+
+  /* Radii & shadows */
+  --radius-xl: 1rem;
+  --shadow-soft: 0 8px 30px rgba(0,0,0,0.08);
+  --shadow-glow: 0 10px 25px rgba(254, 221, 232, 0.35);
 }
 
+/* Tailwind v4-style theme mapping */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  --color-brandnavy: var(--brand-navy);
+  --color-brandlightpink: var(--brand-lightpink);
+  --color-brandpink: var(--brand-pink);
+  --color-branddarkpink: var(--brand-darkpink);
+  --color-brandgrey: var(--brand-grey);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/* ---------- Dark Scheme ---------- */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --panel: rgba(255, 255, 255, 0.06);
+    --panel-border: rgba(255, 255, 255, 0.12);
+    --ink-70: rgba(237, 237, 237, 0.7);
+    --ink-50: rgba(237, 237, 237, 0.5);
+  }
+
+  /* Optional: subtle brandy gradient in dark mode */
+  body {
+    background: linear-gradient(
+      160deg,
+      var(--brand-navy) 0%,
+      #41485b 40%,
+      #2f3345 100%
+    );
   }
 }
 
+/* ---------- Base ---------- */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ---------- Utility Classes ---------- */
+
+.label {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-70);
+}
+
+.input,
+.select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: inherit;
+  outline: none;
+  transition: box-shadow 150ms, border-color 150ms, background-color 150ms;
+}
+.input::placeholder {
+  color: var(--ink-50);
+}
+.input:focus,
+.select:focus {
+  border-color: var(--brand-pink);
+  box-shadow: 0 0 0 3px var(--brand-lightpink);
+  background: color-mix(in oklab, var(--panel) 85%, var(--brand-lightpink) 15%);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-xl);
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: filter 150ms, box-shadow 150ms, transform 120ms, background-color 150ms, color 150ms;
+}
+.btn:active {
+  transform: translateY(0.5px);
+}
+
+.btn-primary {
+  background: var(--brand-pink);
+  color: var(--brand-navy);
+  box-shadow: var(--shadow-glow);
+}
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-ghost {
+  background: var(--panel);
+  border-color: var(--panel-border);
+  color: inherit;
+}
+.btn-ghost:hover {
+  background: color-mix(in oklab, var(--panel) 80%, var(--brand-lightpink) 20%);
+}
+
+.card {
+  border-radius: calc(var(--radius-xl) + 0.5rem);
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-soft);
 }

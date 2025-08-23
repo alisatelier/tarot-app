@@ -1,15 +1,24 @@
-
 const KEY = "tarot_readings_v1";
 
-export type savedReading = {
+export type SavedReading = {
   when: string;
   spreadId: string;
   seed: string;
-  colorway?: "pink" | "grey";   // <— update names here
+  colorway?: "pink" | "grey";
   question?: string;
   meta?: { focus?: string; choice1?: string; choice2?: string };
   cards: { id: string; reversed: boolean; slotKey: string }[];
 };
+
+export function saveReading(r: SavedReading) {
+  const existing = loadAllReadings();
+  existing.unshift(r);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(existing.slice(0, 50)));
+  } catch {
+    // ignore quota errors
+  }
+}
 
 export function loadAllReadings(): SavedReading[] {
   try {

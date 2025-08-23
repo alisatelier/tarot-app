@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as PIXI from "pixi.js";
-import Matter, { Engine, Runner, Bodies, Composite, Body } from "matter-js";
+import { Engine, Runner, Bodies, Composite, Body } from "matter-js";
 import { useTarotStore } from "./useTarotStore";
 import { ALL_CARD_IDS } from "./useTarotStore";
 import { mulberry32, hashSeed } from "../../lib/tarot/rng";
-import { savedReading } from "../../lib/tarot/persistence";
+import { saveReading } from "../../lib/tarot/persistence";
 import {
   CARDS_CATALOG,
   frontSrcFor,
@@ -14,14 +14,31 @@ import {
   type Colorway,
 } from "../../lib/tarot/cards";
 
+// Choose desktop vs mobile image by current renderer size (matches Pink/Grey filename case)
+function bgPath(colorway: "pink" | "grey", w: number, h: number) {
+  const variant = w >= h ? "Desktop" : "Mobile"; // Capitalized
+  const tone = colorway === "pink" ? "Pink" : "Grey"; // Capitalized
+  return `/cards/canvas/${tone}-${variant}.png`;
+}
+
+// Optional: make the bg behave like CSS "background-size: cover"
+function coverSpriteTo(app: PIXI.Application, sprite: PIXI.Sprite) {
+  const W = app.renderer.width;
+  const H = app.renderer.height;
+  const texW = sprite.texture.width || 1;
+  const texH = sprite.texture.height || 1;
+  const scale = Math.max(W / texW, H / texH);
+  sprite.scale.set(scale);
+  sprite.position.set((W - texW * scale) / 2, (H - texH * scale) / 2);
+}
+
 type SpriteEntity = {
-  body: Matter.Body;
+  body: Body;
   front: PIXI.Sprite;
   back: PIXI.Sprite;
   isFaceUp: boolean;
   reversed: boolean;
   slotKey: string;
-  cardId: string; // store id for reliable saves & re-skin
 };
 
 function pickCardsDeterministic(seedStr: string, n: number) {
@@ -43,12 +60,13 @@ function getSeed(): string {
 export default function TarotCanvas() {
   // Refs
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const bgRef = useRef<PIXI.Sprite | null>(null);
   const appRef = useRef<PIXI.Application | null>(null);
-  const engineRef = useRef<Matter.Engine | null>(null);
-  const runnerRef = useRef<Matter.Runner | null>(null);
+  const engineRef = useRef<Engine | null>(null);
+  const runnerRef = useRef<Runner | null>(null);
   const spritesRef = useRef<SpriteEntity[]>([]);
-  const deckBodyRef = useRef<Matter.Body | null>(null);
-  const cleanupRef = useRef<() => void>();
+  const deckBodyRef = useRef<Body | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const [seed, setSeed] = useState<string | null>(null);
 
   // Store
@@ -70,6 +88,7 @@ export default function TarotCanvas() {
     setColorway,
   } = useTarotStore();
 
+
   // --- PIXI + Matter init (Pixi v7 async) ---
   useEffect(() => {
     if (!containerRef.current) return;
@@ -78,18 +97,51 @@ export default function TarotCanvas() {
 
     (async () => {
       const app = new PIXI.Application();
-      await app.init(); // v7 async init
+      await app.init({ backgroundAlpha: 0 }); // v7 async init
+      // Preload BG variants using Pixi v7 Assets loader
+      const bgUrls = [
+        "/cards/canvas/Pink-Desktop.png",
+        "/cards/canvas/Pink-Mobile.png",
+        "/cards/canvas/Grey-Desktop.png",
+        "/cards/canvas/Grey-Mobile.png",
+      ];
+
+      // This returns an array of Textures (one per URL) and waits until all are ready
+      await PIXI.Assets.load(bgUrls);
+
       if (destroyed) return;
 
       appRef.current = app;
       containerRef.current!.appendChild(app.view as HTMLCanvasElement);
+
+      // Keep a local variable but also mirror it to bgRef so other effects can see it
+      let bgSprite: PIXI.Sprite | null = null;
+
+      const mountOrUpdateBg = () => {
+        const w = app.renderer.width;
+        const h = app.renderer.height;
+        const url = bgPath(useTarotStore.getState().colorway, w, h);
+
+        if (!bgSprite) {
+          bgSprite = new PIXI.Sprite(PIXI.Texture.from(url));
+          bgSprite.anchor.set(0);
+          app.stage.addChildAt(bgSprite, 0); // behind cards
+        } else {
+          bgSprite.texture = PIXI.Texture.from(url);
+        }
+
+        coverSpriteTo(app, bgSprite); // keep if you want "background-size: cover"
+        bgRef.current = bgSprite; // so colorway effect can update it
+      };
 
       const resize = () => {
         const el = containerRef.current!;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         app.renderer.resolution = dpr;
         app.renderer.resize(el.clientWidth, el.clientHeight);
+        mountOrUpdateBg(); // update bg sizing/texture after resize
       };
+
       resize();
       const ro = new ResizeObserver(resize);
       ro.observe(containerRef.current!);
@@ -109,7 +161,9 @@ export default function TarotCanvas() {
       Composite.add(engine.world, walls);
 
       // Deck position (bottom-left-ish)
-      const deck = Bodies.rectangle(w * 0.18, h * 0.8, 120, 180, { isStatic: true });
+      const deck = Bodies.rectangle(w * 0.18, h * 0.8, 120, 180, {
+        isStatic: true,
+      });
       deckBodyRef.current = deck;
       Composite.add(engine.world, deck);
 
@@ -182,35 +236,58 @@ export default function TarotCanvas() {
     // Create + tween to slots
     const app = appRef.current!;
     const deck = deckBodyRef.current!;
-    const w = 120, h = 180;
+    const w = 120,
+      h = 180;
 
     const makeCard = (cardId: string, reversed: boolean, slotKey: string) => {
-      const body = Bodies.rectangle(deck.position.x, deck.position.y, w, h, { frictionAir: 0.14 });
+      const body = Bodies.rectangle(deck.position.x, deck.position.y, w, h, {
+        frictionAir: 0.14,
+      });
       Composite.add(engineRef.current!.world, body);
 
-      const front = new PIXI.Sprite(PIXI.Texture.from(frontSrcFor(cardId, colorway)));
-      const back  = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
+      const front = new PIXI.Sprite(
+        PIXI.Texture.from(frontSrcFor(cardId, colorway))
+      );
+
+      const back = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
       for (const spr of [front, back]) {
         spr.anchor.set(0.5);
-        spr.width = w; spr.height = h;
+        spr.width = w;
+        spr.height = h;
         spr.visible = false;
         app.stage.addChild(spr);
       }
-      const entity: SpriteEntity = { body, front, back, isFaceUp: false, reversed, slotKey, cardId };
+      const entity: SpriteEntity = {
+        body,
+        front,
+        back,
+        isFaceUp: false,
+        reversed,
+        slotKey,
+      };
       spritesRef.current.push(entity);
       return entity;
     };
 
-    const tween = (entity: SpriteEntity, target: { x: number; y: number; angle?: number }, ms = 700) =>
+    const tween = (
+      entity: SpriteEntity,
+      target: { x: number; y: number; angle?: number },
+      ms = 700
+    ) =>
       new Promise<void>((resolve) => {
         const body = entity.body;
         const start = performance.now();
-        const sx = body.position.x, sy = body.position.y, sa = body.angle;
+        const sx = body.position.x,
+          sy = body.position.y,
+          sa = body.angle;
         const ta = target.angle ?? sa;
         const step = (now: number) => {
           const t = Math.min(1, (now - start) / ms);
           const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          Body.setPosition(body, { x: sx + (target.x - sx) * ease, y: sy + (target.y - sy) * ease });
+          Body.setPosition(body, {
+            x: sx + (target.x - sx) * ease,
+            y: sy + (target.y - sy) * ease,
+          });
           Body.setAngle(body, sa + (ta - sa) * ease);
           if (t < 1) requestAnimationFrame(step);
           else resolve();
@@ -220,7 +297,10 @@ export default function TarotCanvas() {
 
     const W = app.renderer.width;
     const H = app.renderer.height;
-    const toXY = (xp: number, yp: number) => ({ x: (xp / 100) * W, y: (yp / 100) * H });
+    const toXY = (xp: number, yp: number) => ({
+      x: (xp / 100) * W,
+      y: (yp / 100) * H,
+    });
 
     for (let i = 0; i < spread.slots.length; i++) {
       const slot = spread.slots[i];
@@ -248,7 +328,12 @@ export default function TarotCanvas() {
         const spr = s.isFaceUp ? s.front : s.back;
         if (!spr.visible) continue;
         const bounds = spr.getBounds();
-        if (bounds.contains(pos.x, pos.y)) {
+        if (
+          pos.x >= bounds.x &&
+          pos.x <= bounds.x + bounds.width &&
+          pos.y >= bounds.y &&
+          pos.y <= bounds.y + bounds.height
+        ) {
           s.isFaceUp = !s.isFaceUp;
           break;
         }
@@ -263,10 +348,23 @@ export default function TarotCanvas() {
 
   // --- Live re‑skin when colorway changes (optional but nice) ---
   useEffect(() => {
-    if (!appRef.current || spritesRef.current.length === 0) return;
+    const app = appRef.current;
+    if (!app) return;
+
+    // Update dealt cards
     for (const s of spritesRef.current) {
       s.front.texture = PIXI.Texture.from(frontSrcFor(s.cardId, colorway));
-      s.back.texture  = PIXI.Texture.from(backSrcFor(colorway));
+      s.back.texture = PIXI.Texture.from(backSrcFor(colorway));
+    }
+
+    // Update background
+    const bg = bgRef.current;
+    if (bg) {
+      const w = app.renderer.width;
+      const h = app.renderer.height;
+      const url = bgPath(colorway, w, h);
+      bg.texture = PIXI.Texture.from(url);
+      coverSpriteTo(app, bg); // if you use the "cover" helper
     }
   }, [colorway]);
 
@@ -292,7 +390,7 @@ export default function TarotCanvas() {
         choice1: choice1Text || undefined,
         choice2: choice2Text || undefined,
       },
-      cards: useTarotStore.getState().assignments.map(a => ({
+      cards: useTarotStore.getState().assignments.map((a) => ({
         id: a.cardId,
         reversed: a.reversed,
         slotKey: a.slotKey,
@@ -332,7 +430,9 @@ export default function TarotCanvas() {
           }}
         >
           {useTarotStore.getState().allSpreads.map((s) => (
-            <option key={s.id} value={s.id}>{s.label}</option>
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
           ))}
         </select>
 
@@ -356,33 +456,31 @@ export default function TarotCanvas() {
           {dealing ? "Dealing..." : "Deal Spread"}
         </button>
 
-        <button onClick={saveCurrentReading} className="px-4 py-2 rounded-xl border">
+        <button
+          onClick={saveCurrentReading}
+          className="px-4 py-2 rounded-xl border"
+        >
           Save Reading
         </button>
 
         {seed && (
           <span className="text-sm text-neutral-500">
-            Shareable: add <code>?seed={seed}&colorway={colorway}</code> to this page URL
+            Shareable: add{" "}
+            <code>
+              ?seed={seed}&colorway={colorway}
+            </code>{" "}
+            to this page URL
           </span>
         )}
       </div>
 
       {/* 2b) Focus/Choice inputs (conditional) */}
       {isFocusChoiceSpread && (
-        <div className="grid md:grid-cols-3 gap-3 mb-4">
+        <div className="grid md:grid-cols-2 gap-3 mb-4">
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-neutral-600" htmlFor="focus-text">Focus</label>
-            <input
-              id="focus-text"
-              type="text"
-              value={focusText}
-              onChange={(e) => setFocusText(e.target.value)}
-              placeholder="Your central focus"
-              className="w-full px-3 py-2 rounded-xl border"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-neutral-600" htmlFor="choice1-text">Choice #1</label>
+            <label className="text-sm text-neutral-600" htmlFor="choice1-text">
+              Choice #1
+            </label>
             <input
               id="choice1-text"
               type="text"
@@ -393,7 +491,9 @@ export default function TarotCanvas() {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-neutral-600" htmlFor="choice2-text">Choice #2</label>
+            <label className="text-sm text-neutral-600" htmlFor="choice2-text">
+              Choice #2
+            </label>
             <input
               id="choice2-text"
               type="text"
@@ -407,9 +507,12 @@ export default function TarotCanvas() {
       )}
 
       {/* 3) Canvas */}
-      <div ref={containerRef} className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden" />
+      <div
+        ref={containerRef}
+        className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
+      />
       <p className="mt-3 text-sm text-neutral-600">
-        Tip: Tap/click a card to flip. Reversed cards are auto‑handled (rotated 180°).
+        Tip: Tap/click a card to flip.
       </p>
     </div>
   );
