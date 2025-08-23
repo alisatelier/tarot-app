@@ -550,7 +550,7 @@ export default function TarotCanvas() {
           className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
           disabled={dealing}
         >
-          {dealing ? "Dealing..." : "Deal Spread"}
+          {dealing ? "Pullling..." : "Pull Spread"}
         </button>
 
         <button
@@ -609,7 +609,7 @@ export default function TarotCanvas() {
         className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
       />
       <p className="mt-3 text-sm text-neutral-600">
-        Tip: Click a card to reveal → click again to zoom → click anywhere to return to full spread.
+        Tip: Click a card to reveal → click again to zoom.
       </p>
     </div>
   );
