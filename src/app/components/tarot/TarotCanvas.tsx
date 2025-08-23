@@ -7,12 +7,12 @@ import { useTarotStore } from "./useTarotStore";
 import { ALL_CARD_IDS } from "./useTarotStore";
 
 // Import modular utilities from src/components/tarot
-import { CardCreation } from "../../../components/tarot/CardCreation";
-import { CardInteractions } from "../../../components/tarot/CardInteractions";
-import { PhysicsUtils } from "../../../components/tarot/PhysicsUtils";
-import { PixiSetup, BackgroundUtils, AnimationUtils } from "../../../components/tarot/PixiSetup";
-import { WINDOWS_5, WINDOWS_3, windowCenterTarget, bgPath } from "../../../components/tarot/constants";
-import type { SpriteEntity, Target } from "../../../components/tarot/types";
+import { CardCreation } from "./CardCreation";
+import { CardInteractions } from "./CardInteractions";
+import { PhysicsUtils } from "./PhysicsUtils";
+import { PixiSetup, BackgroundUtils, AnimationUtils } from "./PixiSetup";
+import { WINDOWS_5, WINDOWS_3, windowCenterTarget, bgPath } from "./constants";
+import type { SpriteEntity, Target } from "./types";
 
 // Import from lib/tarot
 import { mulberry32, hashSeed } from "../../../lib/tarot/rng";
