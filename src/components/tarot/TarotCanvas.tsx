@@ -34,8 +34,10 @@ function coverSpriteTo(app: PIXI.Application, sprite: PIXI.Sprite) {
 
 type SpriteEntity = {
   body: Body;
+  cardId: string;
   front: PIXI.Sprite;
   back: PIXI.Sprite;
+  clip: PIXI.Graphics; // NEW (mask)
   isFaceUp: boolean;
   reversed: boolean;
   slotKey: string;
@@ -60,6 +62,10 @@ function getSeed(): string {
 export default function TarotCanvas() {
   // Refs
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const gradientRef = useRef<PIXI.Sprite | null>(null);
+  const usingGradientRef = useRef(false); // NEW
+  const gradientFromRef = useRef(0x000000); // optional, remember colors
+  const gradientToRef = useRef(0x535b73);
   const bgRef = useRef<PIXI.Sprite | null>(null);
   const appRef = useRef<PIXI.Application | null>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -88,7 +94,6 @@ export default function TarotCanvas() {
     setColorway,
   } = useTarotStore();
 
-
   // --- PIXI + Matter init (Pixi v7 async) ---
   useEffect(() => {
     if (!containerRef.current) return;
@@ -109,6 +114,13 @@ export default function TarotCanvas() {
       // This returns an array of Textures (one per URL) and waits until all are ready
       await PIXI.Assets.load(bgUrls);
 
+      const cw = useTarotStore.getState().colorway;
+      await PIXI.Assets.load([
+        backSrcFor("pink"),
+        backSrcFor("grey"),
+        ...ALL_CARD_IDS.map((id) => frontSrcFor(id, cw)),
+      ]);
+
       if (destroyed) return;
 
       appRef.current = app;
@@ -118,6 +130,8 @@ export default function TarotCanvas() {
       let bgSprite: PIXI.Sprite | null = null;
 
       const mountOrUpdateBg = () => {
+        if (usingGradientRef.current) return; // skip cloth if gradient active
+
         const w = app.renderer.width;
         const h = app.renderer.height;
         const url = bgPath(useTarotStore.getState().colorway, w, h);
@@ -125,13 +139,12 @@ export default function TarotCanvas() {
         if (!bgSprite) {
           bgSprite = new PIXI.Sprite(PIXI.Texture.from(url));
           bgSprite.anchor.set(0);
-          app.stage.addChildAt(bgSprite, 0); // behind cards
+          app.stage.addChildAt(bgSprite, 0);
         } else {
           bgSprite.texture = PIXI.Texture.from(url);
         }
-
-        coverSpriteTo(app, bgSprite); // keep if you want "background-size: cover"
-        bgRef.current = bgSprite; // so colorway effect can update it
+        coverSpriteTo(app, bgSprite);
+        bgRef.current = bgSprite;
       };
 
       const resize = () => {
@@ -139,7 +152,12 @@ export default function TarotCanvas() {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         app.renderer.resolution = dpr;
         app.renderer.resize(el.clientWidth, el.clientHeight);
-        mountOrUpdateBg(); // update bg sizing/texture after resize
+
+        if (usingGradientRef.current) {
+          drawGradientBg(app, gradientFromRef.current, gradientToRef.current);
+        } else {
+          mountOrUpdateBg();
+        }
       };
 
       resize();
@@ -174,9 +192,9 @@ export default function TarotCanvas() {
           const angle = s.body.angle;
           s.front.position.set(x, y);
           s.back.position.set(x, y);
+          s.clip.position.set(x, y);
+
           const rot = s.reversed ? angle + Math.PI : angle;
-          s.front.rotation = rot;
-          s.back.rotation = rot;
           s.front.visible = s.isFaceUp;
           s.back.visible = !s.isFaceUp;
         }
@@ -208,18 +226,119 @@ export default function TarotCanvas() {
     };
   }, []);
 
+  //Horoscope Spread
+  function computeHoroscopeTargets(app: PIXI.Application) {
+    const W = app.renderer.width;
+    const H = app.renderer.height;
+    const isDesktop = W >= 768; // tweak breakpoint as you like
+    const cols = isDesktop ? 6 : 3;
+    const rows = isDesktop ? 2 : 4;
+
+    // grid padding as % of canvas
+    const padX = 8; // %
+    const padY = 8; // %
+    const cellW = (100 - padX * 2) / cols;
+    const cellH = (100 - padY * 2) / rows;
+
+    const targets: { x: number; y: number; angle?: number }[] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (targets.length === 12) break;
+        const xPerc = padX + cellW * (c + 0.5);
+        const yPerc = padY + cellH * (r + 0.5);
+        targets.push({
+          x: (xPerc / 100) * W,
+          y: (yPerc / 100) * H,
+          angle: 0,
+        });
+      }
+    }
+    return targets;
+  }
+
+  //Black to BrandNavy Backdrop Canvas
+  function drawGradientBg(app: PIXI.Application, from: number, to: number) {
+    // remove old gradient
+    if (gradientRef.current) {
+      app.stage.removeChild(gradientRef.current);
+      gradientRef.current.destroy(true);
+      gradientRef.current = null;
+    }
+
+    const w = app.renderer.width;
+    const h = app.renderer.height;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, "#" + from.toString(16).padStart(6, "0"));
+    grad.addColorStop(1, "#" + to.toString(16).padStart(6, "0"));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    const tex = PIXI.Texture.from(canvas);
+    const sprite = new PIXI.Sprite(tex);
+    sprite.width = w;
+    sprite.height = h;
+    sprite.alpha = 0; // fade in
+    app.stage.addChildAt(sprite, 0);
+
+    // fade
+    const fade = () => {
+      sprite.alpha = Math.min(1, sprite.alpha + 0.06);
+      if (sprite.alpha >= 1) app.ticker.remove(fade);
+    };
+    app.ticker.add(fade);
+
+    gradientRef.current = sprite;
+  }
+
   // --- Deal flow ---
   async function dealToSpread() {
     if (!appRef.current || !engineRef.current || !deckBodyRef.current) return;
+    if (ALL_CARD_IDS.length === 0) {
+      console.error(
+        "[Tarot] No cards found. Fill CARDS_CATALOG in src/lib/tarot/cards.ts"
+      );
+      alert("No cards found. Please add cards to your deck.");
+      return;
+    }
     if (dealing) return;
+    // Change backdrop gradient when deal starts
+    if (dealing) return;
+
+    // turn on gradient mode
+    usingGradientRef.current = true;
+    gradientFromRef.current = 0x000000; // black
+    gradientToRef.current = 0x535b73; // your navy
+
+    const app = appRef.current!;
+
+    // remove cloth if present
+    if (bgRef.current) {
+      app.stage.removeChild(bgRef.current);
+      bgRef.current.destroy(true);
+      bgRef.current = null;
+    }
+
+    // draw gradient backdrop
+    drawGradientBg(app, gradientFromRef.current, gradientToRef.current);
+
+    setDealing(true);
+
     setDealing(true);
 
     // Clear previous
     for (const s of spritesRef.current) {
       s.front.destroy();
       s.back.destroy();
+      s.frame.destroy();
+      s.clip.destroy();
       Composite.remove(engineRef.current!.world, s.body);
     }
+
     spritesRef.current = [];
 
     // Seed + pick
@@ -233,34 +352,66 @@ export default function TarotCanvas() {
     }));
     setAssignments(newAssignments);
 
-    // Create + tween to slots
-    const app = appRef.current!;
-    const deck = deckBodyRef.current!;
-    const w = 120,
-      h = 180;
+    const urlsToLoad = [
+      backSrcFor(colorway),
+      ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
+    ];
+    // Wait until all textures are ready (Pixi v7)
+    await PIXI.Assets.load(urlsToLoad);
 
+    // Create + tween to slots
+    const pixiApp = appRef.current!;
+    const deck = deckBodyRef.current!;
+    const cardW = 120,
+      cardH = 180;
+
+    // 1) makeCard: build one card (sprites + rounded mask + border), starting at deck
     const makeCard = (cardId: string, reversed: boolean, slotKey: string) => {
-      const body = Bodies.rectangle(deck.position.x, deck.position.y, w, h, {
-        frictionAir: 0.14,
-      });
+      const body = Bodies.rectangle(
+        deck.position.x,
+        deck.position.y,
+        cardW,
+        cardH,
+        {
+          frictionAir: 0.14,
+        }
+      );
       Composite.add(engineRef.current!.world, body);
+
+      const corner = 16; // rounded-xl
+      const strokeWidth = 4; // brand navy
 
       const front = new PIXI.Sprite(
         PIXI.Texture.from(frontSrcFor(cardId, colorway))
       );
-
       const back = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
+
+      // center and size sprites
       for (const spr of [front, back]) {
         spr.anchor.set(0.5);
-        spr.width = w;
-        spr.height = h;
-        spr.visible = false;
-        app.stage.addChild(spr);
+        spr.width = cardW;
+        spr.height = cardH;
+        spr.visible = false; // start face-down
+        pixiApp.stage.addChild(spr);
       }
+
+      // mask (clip)
+      const clip = new PIXI.Graphics();
+      clip
+        .roundRect(-cardW / 2, -cardH / 2, cardW, cardH, corner)
+        .fill(0xffffff);
+      clip.alpha = 0;
+      pixiApp.stage.addChild(clip);
+
+
+      front.mask = clip;
+      back.mask = clip;
+
       const entity: SpriteEntity = {
         body,
         front,
         back,
+        clip,
         isFaceUp: false,
         reversed,
         slotKey,
@@ -269,6 +420,7 @@ export default function TarotCanvas() {
       return entity;
     };
 
+    // 2) tween: move one card to its target
     const tween = (
       entity: SpriteEntity,
       target: { x: number; y: number; angle?: number },
@@ -281,6 +433,7 @@ export default function TarotCanvas() {
           sy = body.position.y,
           sa = body.angle;
         const ta = target.angle ?? sa;
+
         const step = (now: number) => {
           const t = Math.min(1, (now - start) / ms);
           const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -289,12 +442,20 @@ export default function TarotCanvas() {
             y: sy + (target.y - sy) * ease,
           });
           Body.setAngle(body, sa + (ta - sa) * ease);
+
           if (t < 1) requestAnimationFrame(step);
-          else resolve();
+          else {
+            // lock card so it won’t drift
+            Body.setVelocity(body, { x: 0, y: 0 });
+            Body.setAngularVelocity(body, 0);
+            Body.setStatic(body, true);
+            resolve();
+          }
         };
         requestAnimationFrame(step);
       });
 
+    // 3) compute targets (spread vs horoscope grid)
     const W = app.renderer.width;
     const H = app.renderer.height;
     const toXY = (xp: number, yp: number) => ({
@@ -302,14 +463,22 @@ export default function TarotCanvas() {
       y: (yp / 100) * H,
     });
 
+    let targets: { x: number; y: number; angle?: number }[] = [];
+    if (spread.id === "horoscope-12") {
+      targets = computeHoroscopeTargets(app); // returns 12 items
+    } else {
+      targets = spread.slots.map((s) => ({
+        ...toXY(s.xPerc, s.yPerc),
+        angle: s.angle ?? 0,
+      }));
+    }
+
+    // 4) single loop: create → show back → tween → next
     for (let i = 0; i < spread.slots.length; i++) {
-      const slot = spread.slots[i];
-      const { x, y } = toXY(slot.xPerc, slot.yPerc);
-      const chosen = newAssignments[i];
-      const card = makeCard(chosen.cardId, chosen.reversed, slot.key);
-      const angle = (i - spread.slots.length / 2) * 0.08 + (slot.angle ?? 0);
+      const { slotKey, cardId, reversed } = newAssignments[i];
+      const card = makeCard(cardId, reversed, slotKey);
       card.back.visible = true; // start face-down
-      await tween(card, { x, y, angle }, 650);
+      await tween(card, targets[i], 650);
     }
 
     setDealing(false);
@@ -358,13 +527,15 @@ export default function TarotCanvas() {
     }
 
     // Update background
-    const bg = bgRef.current;
-    if (bg) {
-      const w = app.renderer.width;
-      const h = app.renderer.height;
-      const url = bgPath(colorway, w, h);
-      bg.texture = PIXI.Texture.from(url);
-      coverSpriteTo(app, bg); // if you use the "cover" helper
+    if (!usingGradientRef.current) {
+      const bg = bgRef.current;
+      if (bg) {
+        const w = app.renderer.width;
+        const h = app.renderer.height;
+        const url = bgPath(colorway, w, h);
+        bg.texture = PIXI.Texture.from(url);
+        coverSpriteTo(app, bg);
+      }
     }
   }, [colorway]);
 

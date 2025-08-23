@@ -74,9 +74,16 @@ export const CARDS_CATALOG: CardMeta[] = [
 // UPDATE: colorway names
 export type Colorway = "pink" | "grey";
 
+// Keep your fronts as-is, or update similarly if they use caps/dashes.
 export function frontSrcFor(id: string, colorway: Colorway) {
+  // Example if your fronts are still lowercase:
   return `/cards/fronts/${colorway}/${id}.png`;
+  // If your fronts also use caps/dashes, change accordingly.
 }
+
 export function backSrcFor(colorway: Colorway) {
-  return `/cards/backs/${colorway}.png`;
+  // Map to your actual filenames
+  const name = colorway === "pink" ? "Pink-Back" : "Grey-Back";
+  return `/cards/backs/${name}.png`;
 }
+
