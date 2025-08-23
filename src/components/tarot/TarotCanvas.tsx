@@ -14,6 +14,8 @@ import {
   type Colorway,
 } from "../../lib/tarot/cards";
 
+
+
 // percent units, relative to canvas
 type Win = { x: number; y: number; w: number; h: number };
 
@@ -40,6 +42,11 @@ function windowCenterTarget(win: Win, W: number, H: number) {
   const cx = ((win.x + win.w / 2) / 100) * W;
   const cy = ((win.y + win.h / 2) / 100) * H;
   return { x: cx, y: cy, angle: 0 };
+  function zoomScaleTarget() {
+    // Big zoom on desktop, gentler on small screens
+    const w = appRef.current?.renderer.width ?? window.innerWidth;
+    return w < 560 ? 1.22 : 1.5; // tweak to taste
+  }
 }
 
 // Choose desktop vs mobile image by current renderer size (matches Pink/Grey filename case)
@@ -47,6 +54,41 @@ function bgPath(colorway: "pink" | "grey", w: number, h: number) {
   const variant = w >= h ? "Desktop" : "Mobile"; // Capitalized
   const tone = colorway === "pink" ? "Pink" : "Grey"; // Capitalized
   return `/cards/canvas/${tone}-${variant}.png`;
+}
+
+//zoom on hover
+function zoomScaleTarget() {
+  const w = window.innerWidth;
+  if (w < 560) return 1.3; // phones
+  if (w < 1024) return 1.5; // tablets
+  return 1.8; // desktop
+}
+
+// Generic RAF tween helper
+function tweenNumber(
+  from: number,
+  to: number,
+  ms: number,
+  onUpdate: (v: number) => void,
+  onDone?: () => void
+) {
+  const start = performance.now();
+  let raf = 0;
+
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / ms);
+    // easeInOutQuad
+    const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    onUpdate(from + (to - from) * e);
+    if (t < 1) {
+      raf = requestAnimationFrame(step);
+    } else {
+      onDone?.();
+    }
+  };
+
+  raf = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(raf);
 }
 
 // Optional: make the bg behave like CSS "background-size: cover"
@@ -63,9 +105,10 @@ function coverSpriteTo(app: PIXI.Application, sprite: PIXI.Sprite) {
 type SpriteEntity = {
   body: Body;
   cardId: string;
+  view: PIXI.Container; //parent container for flip/rotate/position
   front: PIXI.Sprite;
   back: PIXI.Sprite;
-  clip: PIXI.Graphics; // NEW (mask)
+  clip: PIXI.Graphics;
   isFaceUp: boolean;
   reversed: boolean;
   slotKey: string;
@@ -102,6 +145,8 @@ export default function TarotCanvas() {
   const deckBodyRef = useRef<Body | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const [seed, setSeed] = useState<string | null>(null);
+  const flippingRef = useRef<Set<SpriteEntity>>(new Set());
+  const hoverAnimRef = useRef<Map<SpriteEntity, number>>(new Map());
 
   // Store
   const {
@@ -121,6 +166,85 @@ export default function TarotCanvas() {
     colorway,
     setColorway,
   } = useTarotStore();
+
+  function hoverIn(
+    entity: SpriteEntity,
+    scaleTarget = zoomScaleTarget(), // uses helper
+    liftPx = -20,
+    ms = 180
+  ) {
+    if (!entity.isFaceUp) return; // only zoom when face-up
+
+    const map = hoverAnimRef.current;
+    const cancel = map.get(entity);
+    if (cancel) cancelAnimationFrame(cancel);
+
+    const v = entity.view;
+    const fromScale = v.scale.x; // uniform scale on container
+    const fromY = v.position.y;
+    const toScale = scaleTarget;
+    const toY = fromY + liftPx;
+
+    const cancelId = (() => {
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOutQuad
+        const s = fromScale + (toScale - fromScale) * e;
+        const y = fromY + (toY - fromY) * e;
+        v.scale.set(s, s);
+        v.position.y = y;
+        if (t < 1) raf = requestAnimationFrame(step);
+        else map.delete(entity);
+      };
+      raf = requestAnimationFrame(step);
+      return raf;
+    })();
+
+    map.set(entity, cancelId);
+    // Keep hovered card on top
+    v.zIndex = 10000;
+  }
+
+  function hoverOut(entity: SpriteEntity, ms = 140) {
+    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+
+    const map = hoverAnimRef.current;
+    const cancel = map.get(entity);
+    if (cancel) cancelAnimationFrame(cancel);
+
+    const v = entity.view;
+    const fromScale = v.scale.x;
+    const fromY = v.position.y;
+    const toScale = 1;
+    // approximate lift reversal so the card returns to its original Y
+    const toY = fromY - (fromScale - 1) * 55;
+
+    const cancelId = (() => {
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        const s = fromScale + (toScale - fromScale) * e;
+        const y = fromY + (toY - fromY) * e;
+        v.scale.set(s, s);
+        v.position.y = y;
+        if (t < 1) raf = requestAnimationFrame(step);
+        else {
+          map.delete(entity);
+          // drop back toward original stacking (but keep stable)
+          if (!flippingRef.current.has(entity))
+            v.zIndex = Math.max(v.zIndex, 100);
+        }
+      };
+      raf = requestAnimationFrame(step);
+      return raf;
+    })();
+
+    map.set(entity, cancelId);
+  }
 
   // --- PIXI + Matter init (Pixi v7 async) ---
   useEffect(() => {
@@ -152,6 +276,11 @@ export default function TarotCanvas() {
       if (destroyed) return;
 
       appRef.current = app;
+
+      //fliplogic
+      app.stage.eventMode = "static";
+
+      app.stage.hitArea = app.screen;
 
       app.stage.sortableChildren = true;
 
@@ -221,13 +350,18 @@ export default function TarotCanvas() {
         for (const s of spritesRef.current) {
           const { x, y } = s.body.position;
           const angle = s.body.angle;
-          s.front.position.set(x, y);
-          s.back.position.set(x, y);
-          s.clip.position.set(x, y);
 
+          // position/rotate the container
+          s.view.position.set(x, y);
           const rot = s.reversed ? angle + Math.PI : angle;
+          s.view.rotation = rot;
+
+          // show the correct face
           s.front.visible = s.isFaceUp;
           s.back.visible = !s.isFaceUp;
+
+          // keep mask centered on the container
+          s.clip.position.set(0, 0);
         }
       });
 
@@ -327,182 +461,259 @@ export default function TarotCanvas() {
   }
 
   // --- Deal flow ---
-async function dealToSpread() {
-  if (!appRef.current || !engineRef.current || !deckBodyRef.current) return;
-  if (ALL_CARD_IDS.length === 0) {
-    console.error("[Tarot] No cards found. Fill CARDS_CATALOG in src/lib/tarot/cards.ts");
-    alert("No cards found. Please add cards to your deck.");
-    return;
-  }
-  if (dealing) return;
+  async function dealToSpread() {
+    if (!appRef.current || !engineRef.current || !deckBodyRef.current) return;
+    if (ALL_CARD_IDS.length === 0) {
+      console.error(
+        "[Tarot] No cards found. Fill CARDS_CATALOG in src/lib/tarot/cards.ts"
+      );
+      alert("No cards found. Please add cards to your deck.");
+      return;
+    }
+    if (dealing) return;
 
-  // Turn on gradient mode (one-time each deal)
-  usingGradientRef.current = true;
-  gradientFromRef.current = 0x000000; // black
-  gradientToRef.current   = 0x535b73; // brand navy
+    // Turn on gradient mode (one-time each deal)
+    usingGradientRef.current = true;
+    gradientFromRef.current = 0x000000; // black
+    gradientToRef.current = 0x535b73; // brand navy
 
-  const pixiApp = appRef.current!;
+    const pixiApp = appRef.current!;
 
-  // Remove cloth if present and draw gradient
-  if (bgRef.current) {
-    pixiApp.stage.removeChild(bgRef.current);
-    bgRef.current.destroy(true);
-    bgRef.current = null;
-  }
-  drawGradientBg(pixiApp, gradientFromRef.current, gradientToRef.current);
+    // Remove cloth if present and draw gradient
+    if (bgRef.current) {
+      pixiApp.stage.removeChild(bgRef.current);
+      bgRef.current.destroy(true);
+      bgRef.current = null;
+    }
+    drawGradientBg(pixiApp, gradientFromRef.current, gradientToRef.current);
 
-  setDealing(true);
+    setDealing(true);
 
-  // ---------- Clear previous ----------
-  for (const s of spritesRef.current) {
-    s.front.destroy();
-    s.back.destroy();
-    s.clip.destroy();
-    Composite.remove(engineRef.current!.world, s.body);
-  }
-  spritesRef.current = [];
+    // ---------- Clear previous ----------
+    for (const s of spritesRef.current) {
+      const cancel = hoverAnimRef.current.get(s);
+      if (cancel) cancelAnimationFrame(cancel);
+      hoverAnimRef.current.delete(s);
 
-  // ---------- Seed + pick ----------
-  const seedStr = getSeed();
-  setSeed(seedStr);
-  const picks = pickCardsDeterministic(seedStr, spread.slots.length);
+      s.view.mask = null;
+      s.view.destroy({ children: true });
+      Composite.remove(engineRef.current!.world, s.body);
+    }
+    spritesRef.current = [];
 
-  const newAssignments = picks.map((p, i) => ({
-    slotKey: spread.slots[i].key,
-    cardId: p.id,
-    reversed: p.reversed,
-  }));
-  setAssignments(newAssignments);
+    // ---------- Seed + pick ----------
+    const seedStr = getSeed();
+    setSeed(seedStr);
+    const picks = pickCardsDeterministic(seedStr, spread.slots.length);
 
-  // Preload the textures we’ll use
-  const urlsToLoad = [
-    backSrcFor(colorway),
-    ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
-  ];
-  await PIXI.Assets.load(urlsToLoad);
+    const newAssignments = picks.map((p, i) => ({
+      slotKey: spread.slots[i].key,
+      cardId: p.id,
+      reversed: p.reversed,
+    }));
+    setAssignments(newAssignments);
 
-  // ---------- helpers ----------
-  const deck = deckBodyRef.current!;
-  const defaultCardW = 120;
-  const defaultCardH = 180;
+    // Preload the textures we’ll use
+    const urlsToLoad = [
+      backSrcFor(colorway),
+      ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
+    ];
+    await PIXI.Assets.load(urlsToLoad);
 
-  // create one card entity at the deck position
-  const makeCard = (
-    cardId: string,
-    reversed: boolean,
-    slotKey: string,
-    dealIndex: number,
-    cardW = defaultCardW,
-    cardH = defaultCardH
-  ) => {
-    const body = Bodies.rectangle(deck.position.x, deck.position.y, cardW, cardH, {
-      frictionAir: 0.16,
-      isSensor: true,                                // no collisions while moving
-      collisionFilter: { group: -1, category: 0, mask: 0 },
-    });
-    Composite.add(engineRef.current!.world, body);
+    // ---------- helpers ----------
+    const deck = deckBodyRef.current!;
+    const defaultCardW = 120;
+    const defaultCardH = 180;
 
-    const corner = Math.min(cardW, cardH) * 0.12;
+    // create one card entity at the deck position
+    const makeCard = (
+      cardId: string,
+      reversed: boolean,
+      slotKey: string,
+      dealIndex: number,
+      cardW = defaultCardW,
+      cardH = defaultCardH
+    ) => {
+      const body = Bodies.rectangle(
+        deck.position.x,
+        deck.position.y,
+        cardW,
+        cardH,
+        {
+          frictionAir: 0.16,
+          isSensor: true,
+          collisionFilter: { group: -1, category: 0, mask: 0 },
+        }
+      );
+      Composite.add(engineRef.current!.world, body);
 
-    const front = new PIXI.Sprite(PIXI.Texture.from(frontSrcFor(cardId, colorway)));
-    const back  = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
-    for (const spr of [front, back]) {
-      spr.anchor.set(0.5);
-      spr.width = cardW;
-      spr.height = cardH;
-      spr.visible = false;                  // start face-down
-      spr.zIndex = 100 + dealIndex * 3;     // stable stacking
-      pixiApp.stage.addChild(spr);
+      const corner = Math.min(cardW, cardH) * 0.12;
+
+      // Parent container (we will position/rotate/flip this)
+      const view = new PIXI.Container();
+      view.zIndex = 100 + dealIndex * 3;
+      view.eventMode = "static";
+      view.cursor = "pointer";
+      pixiApp.stage.addChild(view);
+
+      // Front/back sprites centered in the container
+      const front = new PIXI.Sprite(
+        PIXI.Texture.from(frontSrcFor(cardId, colorway))
+      );
+      const back = new PIXI.Sprite(PIXI.Texture.from(backSrcFor(colorway)));
+      for (const spr of [front, back]) {
+        spr.anchor.set(0.5);
+        spr.width = cardW;
+        spr.height = cardH;
+        view.addChild(spr);
+      }
+      // start face-down
+      front.visible = false;
+      back.visible = true;
+
+      // Rounded mask applied to the container (so children keep their aspect)
+      const clip = new PIXI.Graphics();
+      clip
+        .roundRect(-cardW / 2, -cardH / 2, cardW, cardH, corner)
+        .fill(0xffffff);
+      // The mask must be on the stage or a parent of view — add as child of view.
+      view.addChild(clip);
+      view.mask = clip;
+
+      const entity: SpriteEntity = {
+        body,
+        cardId,
+        view,
+        front,
+        back,
+        clip,
+        isFaceUp: false,
+        reversed,
+        slotKey,
+      };
+      spritesRef.current.push(entity);
+
+      // Per-card click flips the container
+      view.on("pointerdown", () => {
+        if (useTarotStore.getState().dealing) return;
+        flipEntity(entity, 260);
+      });
+      // Hover interactions (desktop/mouse only; pointer events still unified)
+      view.on("pointerover", () => hoverIn(entity));
+      view.on("pointerout", () => hoverOut(entity));
+      view.cursor = "pointer";
+
+      return entity;
+    };
+
+    // tween one card body to a target, then lock static
+    const tween = (
+      entity: SpriteEntity,
+      target: { x: number; y: number; angle?: number },
+      ms = 700
+    ) =>
+      new Promise<void>((resolve) => {
+        const body = entity.body;
+        const start = performance.now();
+        const sx = body.position.x;
+        const sy = body.position.y;
+        const sa = body.angle;
+        const ta = target.angle ?? sa;
+
+        const step = (now: number) => {
+          const t = Math.min(1, (now - start) / ms);
+          const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          Body.setPosition(body, {
+            x: sx + (target.x - sx) * ease,
+            y: sy + (target.y - sy) * ease,
+          });
+          Body.setAngle(body, sa + (ta - sa) * ease);
+
+          if (t < 1) requestAnimationFrame(step);
+          else {
+            Body.setVelocity(body, { x: 0, y: 0 });
+            Body.setAngularVelocity(body, 0);
+            Body.setStatic(body, true); // stop drift
+            resolve();
+          }
+        };
+        requestAnimationFrame(step);
+      });
+
+    // ---------- build targets (triangle/5/12/fallback) ----------
+    const W = pixiApp.renderer.width;
+    const H = pixiApp.renderer.height;
+
+    let targets: { x: number; y: number; angle?: number }[] = [];
+    if (spread.id === "horoscope-12") {
+      targets = computeHoroscopeTargets(pixiApp);
+    } else if (
+      spread.slots.length === 5 &&
+      typeof windowCenterTarget === "function"
+    ) {
+      targets = WINDOWS_5.map((win) => windowCenterTarget(win, W, H));
+    } else if (
+      spread.slots.length === 3 &&
+      typeof windowCenterTarget === "function"
+    ) {
+      targets = WINDOWS_3.map((win) => windowCenterTarget(win, W, H));
+    } else {
+      // fallback to percentages on the spread
+      targets = spread.slots.map((s) => ({
+        x: (s.xPerc / 100) * W,
+        y: (s.yPerc / 100) * H,
+        angle: s.angle ?? 0,
+      }));
     }
 
-    // rounded mask (no border)
-    const clip = new PIXI.Graphics();
-    clip.roundRect(-cardW/2, -cardH/2, cardW, cardH, corner).fill(0xffffff);
-    clip.alpha = 0;
-    clip.zIndex = 100 + dealIndex * 3 + 1;
-    pixiApp.stage.addChild(clip);
+    // ---------- create → show back → tween (stable order) ----------
+    for (let i = 0; i < spread.slots.length; i++) {
+      const { slotKey, cardId, reversed } = newAssignments[i];
+      const card = makeCard(cardId, reversed, slotKey, i);
+      card.back.visible = true;
+      await tween(card, targets[i], 650);
+    }
 
-    front.mask = clip;
-    back.mask  = clip;
+    setDealing(false);
+  }
 
-    const entity: SpriteEntity = {
-      body,
-      cardId,
-      front,
-      back,
-      clip,
-      isFaceUp: false,
-      reversed,
-      slotKey,
+  function flipEntity(entity: SpriteEntity, ms = 260) {
+    const flipping = flippingRef.current;
+    if (flipping.has(entity)) return;
+    flipping.add(entity);
+
+    // Cancel any hover zoom and normalize first
+    hoverOut(entity, 80); // quick settle
+    const view = entity.view;
+    view.scale.set(1, 1); // normalize scale before flip
+
+    const start = performance.now();
+    const half = ms * 0.5;
+    let swapped = false;
+
+    const step = (now: number) => {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / ms);
+
+      // 1 → 0 → 1
+      const scaleX = t < 0.5 ? 1 - t / 0.5 : (t - 0.5) / 0.5;
+      view.scale.x = Math.max(0.0001, scaleX);
+
+      if (!swapped && elapsed >= half) {
+        entity.isFaceUp = !entity.isFaceUp; // ticker handles visibility
+        swapped = true;
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        view.scale.x = 1;
+        flipping.delete(entity);
+      }
     };
-    spritesRef.current.push(entity);
-    return entity;
-  };
 
-  // tween one card body to a target, then lock static
-  const tween = (
-    entity: SpriteEntity,
-    target: { x: number; y: number; angle?: number },
-    ms = 700
-  ) =>
-    new Promise<void>((resolve) => {
-      const body = entity.body;
-      const start = performance.now();
-      const sx = body.position.x;
-      const sy = body.position.y;
-      const sa = body.angle;
-      const ta = target.angle ?? sa;
-
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / ms);
-        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-        Body.setPosition(body, {
-          x: sx + (target.x - sx) * ease,
-          y: sy + (target.y - sy) * ease,
-        });
-        Body.setAngle(body, sa + (ta - sa) * ease);
-
-        if (t < 1) requestAnimationFrame(step);
-        else {
-          Body.setVelocity(body, { x: 0, y: 0 });
-          Body.setAngularVelocity(body, 0);
-          Body.setStatic(body, true);       // stop drift
-          resolve();
-        }
-      };
-      requestAnimationFrame(step);
-    });
-
-  // ---------- build targets (triangle/5/12/fallback) ----------
-  const W = pixiApp.renderer.width;
-  const H = pixiApp.renderer.height;
-
-  let targets: { x: number; y: number; angle?: number }[] = [];
-  if (spread.id === "horoscope-12") {
-    targets = computeHoroscopeTargets(pixiApp);
-  } else if (spread.slots.length === 5 && typeof windowCenterTarget === "function") {
-    targets = WINDOWS_5.map((win) => windowCenterTarget(win, W, H));
-  } else if (spread.slots.length === 3 && typeof windowCenterTarget === "function") {
-    targets = WINDOWS_3.map((win) => windowCenterTarget(win, W, H));
-  } else {
-    // fallback to percentages on the spread
-    targets = spread.slots.map((s) => ({
-      x: (s.xPerc / 100) * W,
-      y: (s.yPerc / 100) * H,
-      angle: s.angle ?? 0,
-    }));
+    requestAnimationFrame(step);
   }
-
-  // ---------- create → show back → tween (stable order) ----------
-  for (let i = 0; i < spread.slots.length; i++) {
-    const { slotKey, cardId, reversed } = newAssignments[i];
-    const card = makeCard(cardId, reversed, slotKey, i);
-    card.back.visible = true;
-    await tween(card, targets[i], 650);
-  }
-
-  setDealing(false);
-}
 
   // --- Flip handler (this is the one that was easy to delete) ---
   useEffect(() => {
@@ -510,20 +721,23 @@ async function dealToSpread() {
     if (!app) return;
 
     const onPointer = (e: PIXI.FederatedPointerEvent) => {
+      if (useTarotStore.getState().dealing) return; // optional: block during dealing
       const pos = e.global;
+
       // topmost first
       for (let i = spritesRef.current.length - 1; i >= 0; i--) {
         const s = spritesRef.current[i];
+        // Use the currently visible sprite’s bounds for hit test
         const spr = s.isFaceUp ? s.front : s.back;
         if (!spr.visible) continue;
-        const bounds = spr.getBounds();
+        const b = spr.getBounds();
         if (
-          pos.x >= bounds.x &&
-          pos.x <= bounds.x + bounds.width &&
-          pos.y >= bounds.y &&
-          pos.y <= bounds.y + bounds.height
+          pos.x >= b.x &&
+          pos.x <= b.x + b.width &&
+          pos.y >= b.y &&
+          pos.y <= b.y + b.height
         ) {
-          s.isFaceUp = !s.isFaceUp;
+          flipEntity(s, 260);
           break;
         }
       }
