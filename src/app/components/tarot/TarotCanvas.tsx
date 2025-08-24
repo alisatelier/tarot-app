@@ -14,6 +14,7 @@ import {
   preScaleEntityForProfile,
 } from "./ResponsiveSizing";
 import { applyLayoutOverrides } from "./interfaces/layout.overrides";
+import { computeSpawnPoint } from "./interfaces/deal.spawn";
 
 // Import from lib/tarot
 import { mulberry32, hashSeed } from "../../../lib/tarot/rng";
@@ -465,16 +466,22 @@ export default function TarotCanvas() {
     await PIXI.Assets.load(urlsToLoad);
 
     // Create cards
-    const deck = deckBodyRef.current!;
     const defaultCardW = 200;
     const defaultCardH = 300;
+
+    // Compute spawn once per deal (uses current viewport)
+    const { x: spawnX, y: spawnY } = computeSpawnPoint(
+      pixiApp,
+      defaultCardH,
+      /* yFactor */ 0.9
+    );
 
     for (let i = 0; i < spread.slots.length; i++) {
       const { slotKey, cardId, reversed } = newAssignments[i];
 
       const body = Bodies.rectangle(
-        deck.position.x,
-        deck.position.y,
+        spawnX,
+        spawnY,
         defaultCardW,
         defaultCardH,
         {
@@ -492,6 +499,9 @@ export default function TarotCanvas() {
       view.eventMode = "static";
       view.cursor = "pointer";
       pixiApp.stage.addChild(view);
+
+      // Match the PIXI view to the spawn immediately (no 1-frame flicker)
+      view.position.set(spawnX, spawnY);
 
       const frontTex = PIXI.Texture.from(frontSrcFor(cardId, colorway));
       frontTex.source.scaleMode = "linear";
@@ -656,9 +666,11 @@ export default function TarotCanvas() {
 
       const currentZoomed = currentZoomedCardRef.current;
       if (currentZoomed && currentZoomed.zoomState === "zoomed") {
-        zoomToCard(currentZoomed, false);
-        showAllCards();
-        currentZoomedCardRef.current = null;
+        if (interactions.current) {
+          interactions.current.zoomToCard(currentZoomed, false);
+          interactions.current.showAllCards();
+          currentZoomedCardRef.current = null;
+        }
         return;
       }
 
@@ -674,7 +686,9 @@ export default function TarotCanvas() {
           pos.y >= b.y &&
           pos.y <= b.y + b.height
         ) {
-          handleCardClick(s);
+          if (interactions.current) {
+            interactions.current.handleCardClick(s);
+          }
           break;
         }
       }
@@ -790,7 +804,7 @@ export default function TarotCanvas() {
           className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
           disabled={dealing}
         >
-          {dealing ? "Dealing..." : "Deal Spread"}
+          {dealing ? "Pulling..." : "Pull Spread"}
         </button>
 
         <button
@@ -849,8 +863,7 @@ export default function TarotCanvas() {
         className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
       />
       <p className="mt-3 text-sm text-neutral-600">
-        Tip: Click a card to reveal → click again to zoom to center → click
-        anywhere to return to full spread.
+        Tip: Click a card to reveal → click again to zoom.
       </p>
     </div>
   );
