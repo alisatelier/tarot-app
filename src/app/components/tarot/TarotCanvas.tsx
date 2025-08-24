@@ -1,25 +1,110 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import * as PIXI from "pixi.js";
 import Matter from "matter-js";
 import { useTarotStore } from "./useTarotStore";
 import { ALL_CARD_IDS } from "./useTarotStore";
 
-// Import modular utilities from src/components/tarot
-import { CardCreation } from "./CardCreation";
-import { CardInteractions } from "./CardInteractions";
-import { PhysicsUtils } from "./PhysicsUtils";
-import { PixiSetup, BackgroundUtils, AnimationUtils } from "./PixiSetup";
-import { WINDOWS_5, WINDOWS_3, windowCenterTarget, bgPath } from "./constants";
-import type { SpriteEntity, Target } from "./types";
-
 // Import from lib/tarot
 import { mulberry32, hashSeed } from "../../../lib/tarot/rng";
 import { saveReading } from "../../../lib/tarot/persistence";
-import { frontSrcFor, backSrcFor, type Colorway } from "../../../lib/tarot/cards";
+import {
+  frontSrcFor,
+  backSrcFor,
+  type Colorway,
+} from "../../../lib/tarot/cards";
 
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
+
+// Types
+type Win = { x: number; y: number; w: number; h: number };
+type Target = { x: number; y: number; angle?: number };
+type SpriteEntity = {
+  body: any;
+  cardId: string;
+  view: PIXI.Container;
+  front: PIXI.Sprite;
+  back: PIXI.Sprite;
+  clip: PIXI.Graphics;
+  isFaceUp: boolean;
+  reversed: boolean;
+  slotKey: string;
+  zoomState: 'normal' | 'zoomed';
+};
+
+// Constants
+const WINDOWS_5: Win[] = [
+  { x: 18, y: 18, w: 14, h: 26 },
+  { x: 43, y: 18, w: 14, h: 26 },
+  { x: 68, y: 18, w: 14, h: 26 },
+  { x: 30, y: 54, w: 14, h: 26 },
+  { x: 56, y: 54, w: 14, h: 26 },
+];
+
+const WINDOWS_3: Win[] = [
+  { x: 43, y: 20, w: 14, h: 26 },
+  { x: 20, y: 55, w: 14, h: 26 },
+  { x: 66, y: 55, w: 14, h: 26 },
+];
+
+function windowCenterTarget(win: Win, W: number, H: number) {
+  const cx = ((win.x + win.w / 2) / 100) * W;
+  const cy = ((win.y + win.h / 2) / 100) * H;
+  return { x: cx, y: cy, angle: 0 };
+}
+
+function bgPath(colorway: "pink" | "grey", w: number, h: number) {
+  const variant = w >= h ? "Desktop" : "Mobile";
+  const tone = colorway === "pink" ? "Pink" : "Grey";
+  return `/cards/canvas/${tone}-${variant}.png`;
+}
+
+function coverSpriteTo(app: PIXI.Application, sprite: PIXI.Sprite) {
+  const W = app.renderer.width;
+  const H = app.renderer.height;
+  const texW = sprite.texture.width || 1;
+  const texH = sprite.texture.height || 1;
+  const scale = Math.max(W / texW, H / texH);
+  sprite.scale.set(scale);
+  sprite.position.set((W - texW * scale) / 2, (H - texH * scale) / 2);
+}
+
+function drawGradientBg(app: PIXI.Application, from: number, to: number, gradientRef: MutableRefObject<PIXI.Sprite | null>) {
+  if (gradientRef.current) {
+    app.stage.removeChild(gradientRef.current);
+    gradientRef.current.destroy(true);
+    gradientRef.current = null;
+  }
+
+  const w = app.renderer.width;
+  const h = app.renderer.height;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, "#" + from.toString(16).padStart(6, "0"));
+  grad.addColorStop(1, "#" + to.toString(16).padStart(6, "0"));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  const tex = PIXI.Texture.from(canvas);
+  const sprite = new PIXI.Sprite(tex);
+  sprite.width = w;
+  sprite.height = h;
+  sprite.alpha = 0;
+  app.stage.addChildAt(sprite, 0);
+
+  const fade = () => {
+    sprite.alpha = Math.min(1, sprite.alpha + 0.06);
+    if (sprite.alpha >= 1) app.ticker.remove(fade);
+  };
+  app.ticker.add(fade);
+
+  gradientRef.current = sprite;
+}
 
 function pickCardsDeterministic(seedStr: string, n: number) {
   const rnd = mulberry32(hashSeed(seedStr));
@@ -45,8 +130,8 @@ function computeHoroscopeTargets(app: PIXI.Application): Target[] {
   const cols = isDesktop ? 6 : 3;
   const rows = isDesktop ? 2 : 4;
 
-  const padX = 8; // %
-  const padY = 8; // %
+  const padX = 8;
+  const padY = 8;
   const cellW = (100 - padX * 2) / cols;
   const cellH = (100 - padY * 2) / rows;
 
@@ -85,9 +170,6 @@ export default function TarotCanvas() {
   const hoverAnimRef = useRef<Map<SpriteEntity, number>>(new Map());
   const currentZoomedCardRef = useRef<SpriteEntity | null>(null);
 
-  // Initialize card interactions utility
-  const cardInteractions = useRef<CardInteractions | null>(null);
-
   // Store
   const {
     spread,
@@ -107,16 +189,182 @@ export default function TarotCanvas() {
     setColorway,
   } = useTarotStore();
 
-  // Initialize card interactions
-  useEffect(() => {
-    cardInteractions.current = new CardInteractions(
-      hoverAnimRef,
-      flippingRef,
-      currentZoomedCardRef,
-      appRef,
-      spritesRef
-    );
-  }, []);
+  // Card interaction functions
+  function handleCardClick(entity: SpriteEntity) {
+    if (dealing) return;
+    
+    // If there's already a zoomed card that's not this one, zoom it out first
+    const currentZoomed = currentZoomedCardRef.current;
+    if (currentZoomed && currentZoomed !== entity && currentZoomed.zoomState === 'zoomed') {
+      zoomToCard(currentZoomed, false);
+      showAllCards();
+      currentZoomedCardRef.current = null;
+    }
+    
+    if (!entity.isFaceUp) {
+      // First click: Flip to reveal the card
+      flipEntity(entity, 260);
+    } else if (entity.zoomState === 'normal') {
+      // Second click: Zoom in and hide other cards
+      zoomToCard(entity, true);
+      hideOtherCards(entity);
+      currentZoomedCardRef.current = entity;
+    } else {
+      // Third click: Zoom out and show all cards
+      zoomToCard(entity, false);
+      showAllCards();
+      currentZoomedCardRef.current = null;
+    }
+  }
+
+  function hideOtherCards(zoomedEntity: SpriteEntity, ms = 300) {
+    for (const entity of spritesRef.current) {
+      if (entity === zoomedEntity) continue;
+      
+      const v = entity.view;
+      const fromAlpha = v.alpha;
+      const toAlpha = 0;
+      
+      if (fromAlpha === toAlpha) return;
+      
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = 1 - Math.pow(1 - t, 3);
+        v.alpha = fromAlpha + (toAlpha - fromAlpha) * e;
+        if (t < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+  }
+
+  function showAllCards(ms = 300) {
+    for (const entity of spritesRef.current) {
+      const v = entity.view;
+      const fromAlpha = v.alpha;
+      const toAlpha = 1;
+      
+      if (fromAlpha === toAlpha) continue;
+      
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = 1 - Math.pow(1 - t, 3);
+        v.alpha = fromAlpha + (toAlpha - fromAlpha) * e;
+        if (t < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+  }
+
+  function zoomToCard(entity: SpriteEntity, zoomIn: boolean, ms = 400) {
+    const map = hoverAnimRef.current;
+    const cancel = map.get(entity);
+    if (cancel) cancelAnimationFrame(cancel);
+
+    const v = entity.view;
+    const app = appRef.current;
+    if (!app) return;
+
+    const fromScale = v.scale.x;
+    const fromX = v.position.x;
+    const fromY = v.position.y;
+
+    let toScale: number;
+    let toX: number;
+    let toY: number;
+
+    if (zoomIn) {
+      toScale = 2.0; // Increased zoom scale for better visibility
+      toX = app.renderer.width / 2;
+      toY = app.renderer.height / 2;
+      entity.zoomState = 'zoomed';
+    } else {
+      const body = entity.body;
+      toScale = 1;
+      toX = body.position.x;
+      toY = body.position.y;
+      entity.zoomState = 'normal';
+    }
+
+    const cancelId = (() => {
+      const start = performance.now();
+      let raf = 0;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const e = 1 - Math.pow(1 - t, 3); // Smooth easing
+        const s = fromScale + (toScale - fromScale) * e;
+        const x = fromX + (toX - fromX) * e;
+        const y = fromY + (toY - fromY) * e;
+        v.scale.set(s, s);
+        v.position.x = x;
+        v.position.y = y;
+        if (t < 1) raf = requestAnimationFrame(step);
+        else {
+          if (!zoomIn) {
+            map.delete(entity);
+          }
+        }
+      };
+      raf = requestAnimationFrame(step);
+      return raf;
+    })();
+
+    map.set(entity, cancelId);
+    
+    if (zoomIn) {
+      v.zIndex = 999999;
+      if (v.parent) {
+        v.parent.setChildIndex(v, v.parent.children.length - 1);
+      }
+    } else {
+      v.zIndex = 100;
+    }
+  }
+
+  function flipEntity(entity: SpriteEntity, ms = 260) {
+    const flipping = flippingRef.current;
+    if (flipping.has(entity)) return;
+    flipping.add(entity);
+
+    const cancel = hoverAnimRef.current.get(entity);
+    if (cancel) {
+      cancelAnimationFrame(cancel);
+      hoverAnimRef.current.delete(entity);
+    }
+    
+    const view = entity.view;
+    view.scale.set(1, 1);
+    entity.zoomState = 'normal';
+
+    const start = performance.now();
+    const half = ms * 0.5;
+    let swapped = false;
+
+    const step = (now: number) => {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / ms);
+
+      const scaleX = t < 0.5 ? 1 - t / 0.5 : (t - 0.5) / 0.5;
+      view.scale.x = Math.max(0.0001, scaleX);
+
+      if (!swapped && elapsed >= half) {
+        entity.isFaceUp = !entity.isFaceUp;
+        swapped = true;
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        view.scale.x = 1;
+        flipping.delete(entity);
+      }
+    };
+
+    requestAnimationFrame(step);
+  }
 
   // PIXI + Matter initialization
   useEffect(() => {
@@ -133,9 +381,7 @@ export default function TarotCanvas() {
         autoDensity: true,
       });
 
-      console.log("[TarotCanvas] PixiJS app initialized", app);
-
-      // Load background assets
+      // Load assets
       await PIXI.Assets.load([
         "/cards/canvas/Pink-Desktop.png",
         "/cards/canvas/Pink-Mobile.png",
@@ -143,7 +389,6 @@ export default function TarotCanvas() {
         "/cards/canvas/Grey-Mobile.png",
       ]);
 
-      // Load card assets
       const cw = useTarotStore.getState().colorway;
       await PIXI.Assets.load([
         backSrcFor("pink"),
@@ -163,13 +408,11 @@ export default function TarotCanvas() {
         containerRef.current.appendChild(app.view as HTMLCanvasElement);
       }
 
-      // Style canvas
       const canvasEl = app.view as HTMLCanvasElement;
       canvasEl.style.display = "block";
       canvasEl.style.width = "100%";
       canvasEl.style.height = "100%";
 
-      // Background management
       let bgSprite: PIXI.Sprite | null = null;
 
       const mountOrUpdateBg = () => {
@@ -185,13 +428,13 @@ export default function TarotCanvas() {
         } else {
           bgSprite.texture = PIXI.Texture.from(url);
         }
-        BackgroundUtils.coverSpriteTo(app, bgSprite);
+        coverSpriteTo(app, bgSprite);
         bgRef.current = bgSprite;
       };
 
       const ensureBackdrop = () => {
         if (usingGradientRef.current) {
-          BackgroundUtils.drawGradientBg(app, gradientFromRef.current, gradientToRef.current, gradientRef);
+          drawGradientBg(app, gradientFromRef.current, gradientToRef.current, gradientRef);
         } else {
           mountOrUpdateBg();
         }
@@ -209,7 +452,6 @@ export default function TarotCanvas() {
       const ro = new ResizeObserver(resize);
       ro.observe(containerRef.current!);
 
-      // Physics setup
       const engine = Engine.create({ gravity: { x: 0, y: 0 } });
       engineRef.current = engine;
 
@@ -224,23 +466,25 @@ export default function TarotCanvas() {
       ];
       Composite.add(engine.world, walls);
 
-      // Deck position
-      const deck = PhysicsUtils.createDeckBody(w * 0.18, h * 0.8, 200, 300);
+      const deck = Bodies.rectangle(w * 0.18, h * 0.8, 200, 300, { isStatic: true });
       deckBodyRef.current = deck;
       Composite.add(engine.world, deck);
 
-      // Sync loop
       app.ticker.add(() => {
         for (const s of spritesRef.current) {
-          const { x, y } = (s.body as any).position;
-          const angle = (s.body as any).angle;
+          const { x, y } = s.body.position;
+          const angle = s.body.angle;
 
-          if (!hoverAnimRef.current.has(s)) {
+          // Only sync position if not zoomed and not being animated
+          if (!hoverAnimRef.current.has(s) && s.zoomState !== 'zoomed') {
             s.view.position.set(x, y);
           }
           
-          const rot = s.reversed ? angle + Math.PI : angle;
-          s.view.rotation = rot;
+          // Only sync rotation if not zoomed
+          if (s.zoomState !== 'zoomed') {
+            const rot = s.reversed ? angle + Math.PI : angle;
+            s.view.rotation = rot;
+          }
 
           s.front.visible = s.isFaceUp;
           s.back.visible = !s.isFaceUp;
@@ -252,7 +496,6 @@ export default function TarotCanvas() {
       Runner.run(runner, engine);
       runnerRef.current = runner;
 
-      // Cleanup function
       const cleanup = () => {
         ro.disconnect();
         Runner.stop(runner);
@@ -284,29 +527,34 @@ export default function TarotCanvas() {
     }
     if (dealing) return;
 
-    // Switch to gradient background
     usingGradientRef.current = true;
     gradientFromRef.current = 0x000000;
     gradientToRef.current = 0x535b73;
 
     const pixiApp = appRef.current!;
 
-    // Remove previous background
     if (bgRef.current) {
       pixiApp.stage.removeChild(bgRef.current);
       bgRef.current.destroy(true);
       bgRef.current = null;
     }
-    BackgroundUtils.drawGradientBg(pixiApp, gradientFromRef.current, gradientToRef.current, gradientRef);
+    drawGradientBg(pixiApp, gradientFromRef.current, gradientToRef.current, gradientRef);
 
     setDealing(true);
     currentZoomedCardRef.current = null;
 
     // Clean up previous cards
-    PhysicsUtils.cleanupSprites(spritesRef.current, engineRef.current!, hoverAnimRef.current);
+    for (const s of spritesRef.current) {
+      const cancel = hoverAnimRef.current.get(s);
+      if (cancel) cancelAnimationFrame(cancel);
+      hoverAnimRef.current.delete(s);
+
+      s.view.mask = null;
+      s.view.destroy({ children: true });
+      Composite.remove(engineRef.current!.world, s.body);
+    }
     spritesRef.current = [];
 
-    // Generate cards
     const seedStr = getSeed();
     setSeed(seedStr);
     const picks = pickCardsDeterministic(seedStr, spread.slots.length);
@@ -319,36 +567,91 @@ export default function TarotCanvas() {
     setAssignments(newAssignments);
 
     // Preload textures
-    await CardCreation.preloadTextures(newAssignments, colorway, frontSrcFor, backSrcFor);
+    const urlsToLoad = [
+      backSrcFor(colorway),
+      ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
+    ];
+    await PIXI.Assets.load(urlsToLoad);
 
-    // Create cards using modular utility
+    // Create cards
     const deck = deckBodyRef.current!;
-    const deckPosition = { x: (deck as any).position.x, y: (deck as any).position.y };
+    const defaultCardW = 200;
+    const defaultCardH = 300;
 
     for (let i = 0; i < spread.slots.length; i++) {
       const { slotKey, cardId, reversed } = newAssignments[i];
-      const entity = await CardCreation.createCardEntity(
+      
+      const body = Bodies.rectangle(
+        deck.position.x,
+        deck.position.y,
+        defaultCardW,
+        defaultCardH,
+        {
+          frictionAir: 0.16,
+          isSensor: true,
+          collisionFilter: { group: -1, category: 0, mask: 0 },
+        }
+      );
+      Composite.add(engineRef.current!.world, body);
+
+      const corner = Math.min(defaultCardW, defaultCardH) * 0.12;
+
+      const view = new PIXI.Container();
+      view.zIndex = 100 + i * 3;
+      view.eventMode = "static";
+      view.cursor = "pointer";
+      pixiApp.stage.addChild(view);
+
+      const frontTex = PIXI.Texture.from(frontSrcFor(cardId, colorway));
+      frontTex.source.scaleMode = 'linear';
+
+      const backTex = PIXI.Texture.from(backSrcFor(colorway));
+      backTex.source.scaleMode = 'linear';
+
+      const front = new PIXI.Sprite(frontTex);
+      const back = new PIXI.Sprite(backTex);
+
+      front.anchor.set(0.5);
+      back.anchor.set(0.5);
+      front.width = defaultCardW;
+      front.height = defaultCardH;
+      back.width = defaultCardW;
+      back.height = defaultCardH;
+
+      view.addChild(front);
+      view.addChild(back);
+      
+      front.visible = false;
+      back.visible = true;
+
+      const clip = new PIXI.Graphics();
+      clip
+        .roundRect(-defaultCardW / 2, -defaultCardH / 2, defaultCardW, defaultCardH, corner)
+        .fill(0xffffff);
+      view.addChild(clip);
+      view.mask = clip;
+
+      const entity: SpriteEntity = {
+        body,
         cardId,
+        view,
+        front,
+        back,
+        clip,
+        isFaceUp: false,
         reversed,
         slotKey,
-        i,
-        deckPosition,
-        frontSrcFor,
-        backSrcFor,
-        colorway,
-        engineRef.current!,
-        pixiApp
-      );
-
-      // Add click handler
-      entity.view.on("pointerdown", () => {
-        cardInteractions.current?.handleCardClick(entity);
-      });
-
+        zoomState: 'normal',
+      };
       spritesRef.current.push(entity);
+
+      view.on("pointerdown", (e) => {
+        e.stopPropagation();
+        handleCardClick(entity);
+      });
     }
 
-    // Calculate targets based on spread
+    // Calculate targets
     const W = pixiApp.renderer.width;
     const H = pixiApp.renderer.height;
 
@@ -360,7 +663,7 @@ export default function TarotCanvas() {
     } else if (spread.slots.length === 3) {
       targets = WINDOWS_3.map((win) => windowCenterTarget(win, W, H));
     } else {
-      targets = spread.slots.map((s) => ({
+      targets = spread.slots.map((s: any) => ({
         x: (s.xPerc / 100) * W,
         y: (s.yPerc / 100) * H,
         angle: s.angle ?? 0,
@@ -386,9 +689,9 @@ export default function TarotCanvas() {
     new Promise<void>((resolve) => {
       const body = entity.body;
       const start = performance.now();
-      const sx = (body as any).position.x;
-      const sy = (body as any).position.y;
-      const sa = (body as any).angle;
+      const sx = body.position.x;
+      const sy = body.position.y;
+      const sa = body.angle;
       const ta = target.angle ?? sa;
 
       const step = (now: number) => {
@@ -417,11 +720,16 @@ export default function TarotCanvas() {
     if (!app) return;
 
     const onPointer = (e: PIXI.FederatedPointerEvent) => {
-      if (cardInteractions.current?.handleGlobalClick(dealing)) {
-        return; // Handled zoom out
+      if (dealing) return;
+      
+      const currentZoomed = currentZoomedCardRef.current;
+      if (currentZoomed && currentZoomed.zoomState === 'zoomed') {
+        zoomToCard(currentZoomed, false);
+        showAllCards();
+        currentZoomedCardRef.current = null;
+        return;
       }
       
-      // Normal card click detection
       const pos = e.global;
       for (let i = spritesRef.current.length - 1; i >= 0; i--) {
         const s = spritesRef.current[i];
@@ -434,7 +742,7 @@ export default function TarotCanvas() {
           pos.y >= b.y &&
           pos.y <= b.y + b.height
         ) {
-          cardInteractions.current?.handleCardClick(s);
+          handleCardClick(s);
           break;
         }
       }
@@ -461,7 +769,7 @@ export default function TarotCanvas() {
         const h = app.renderer.height;
         const url = bgPath(colorway, w, h);
         bg.texture = PIXI.Texture.from(url);
-        BackgroundUtils.coverSpriteTo(app, bg);
+        coverSpriteTo(app, bg);
       }
     }
   }, [colorway]);
@@ -550,7 +858,7 @@ export default function TarotCanvas() {
           className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
           disabled={dealing}
         >
-          {dealing ? "Pullling..." : "Pull Spread"}
+          {dealing ? "Dealing..." : "Deal Spread"}
         </button>
 
         <button
@@ -609,7 +917,7 @@ export default function TarotCanvas() {
         className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
       />
       <p className="mt-3 text-sm text-neutral-600">
-        Tip: Click a card to reveal → click again to zoom.
+        Tip: Click a card to reveal → click again to zoom to center → click anywhere to return to full spread.
       </p>
     </div>
   );

@@ -4,77 +4,93 @@ import type { SpriteEntity } from "./types";
 /**
  * Card interaction and animation utilities
  */
-export class CardInteractions {
-  private hoverAnimRef: React.MutableRefObject<Map<SpriteEntity, number>>;
-  private flippingRef: React.MutableRefObject<Set<SpriteEntity>>;
-  private currentZoomedCardRef: React.MutableRefObject<SpriteEntity | null>;
-  private appRef: React.MutableRefObject<PIXI.Application | null>;
-  private spritesRef: React.MutableRefObject<SpriteEntity[]>;
+
+type Getter<T> = () => T;
+type Setter<T> = (v: T) => void;
+
+export class interactions {
+  private getHoverAnim: Getter<Map<SpriteEntity, number>>;
+  private getFlipping: Getter<Set<SpriteEntity>>;
+  private getCurrentZoomed: Getter<SpriteEntity | null>;
+  private setCurrentZoomed: Setter<SpriteEntity | null>;
+  private getApp: Getter<PIXI.Application | null>;
+  private getSprites: Getter<SpriteEntity[]>;
 
   constructor(
-    hoverAnimRef: React.MutableRefObject<Map<SpriteEntity, number>>,
-    flippingRef: React.MutableRefObject<Set<SpriteEntity>>,
-    currentZoomedCardRef: React.MutableRefObject<SpriteEntity | null>,
-    appRef: React.MutableRefObject<PIXI.Application | null>,
-    spritesRef: React.MutableRefObject<SpriteEntity[]>
+    getHoverAnim: Getter<Map<SpriteEntity, number>>,
+    getFlipping: Getter<Set<SpriteEntity>>,
+    getCurrentZoomed: Getter<SpriteEntity | null>,
+    setCurrentZoomed: Setter<SpriteEntity | null>,
+    getApp: Getter<PIXI.Application | null>,
+    getSprites: Getter<SpriteEntity[]>
   ) {
-    this.hoverAnimRef = hoverAnimRef;
-    this.flippingRef = flippingRef;
-    this.currentZoomedCardRef = currentZoomedCardRef;
-    this.appRef = appRef;
-    this.spritesRef = spritesRef;
+    this.getHoverAnim = getHoverAnim;
+    this.getFlipping = getFlipping;
+    this.getCurrentZoomed = getCurrentZoomed;
+    this.setCurrentZoomed = setCurrentZoomed;
+    this.getApp = getApp;
+    this.getSprites = getSprites;
   }
 
-  handleCardClick = (entity: SpriteEntity) => {
-    // If there's already a zoomed card that's not this one, zoom it out first
-    const currentZoomed = this.currentZoomedCardRef.current;
-    if (currentZoomed && currentZoomed !== entity && currentZoomed.zoomState === 'zoomed') {
-      this.zoomToCard(currentZoomed, false);
-      this.showAllCards();
-      this.currentZoomedCardRef.current = null;
+  handleCardClick(entity: SpriteEntity) {
+    if (this.getFlipping().has(entity)) return;
+
+    const zoomed = this.getCurrentZoomed();
+
+    if (!zoomed) {
+      this.zoomToCard(entity, true);
+      this.setCurrentZoomed(entity);
+      return;
     }
-    
+
+    if (zoomed === entity) {
+      this.unzoomCurrent();
+      this.setCurrentZoomed(null);
+      return;
+    }
+
     if (!entity.isFaceUp) {
       // First click: Flip to reveal the card
       this.flipEntity(entity, 260);
-    } else if (entity.zoomState === 'normal') {
+    } else if (entity.zoomState === "normal") {
       // Second click: Zoom in and hide other cards
       this.zoomToCard(entity, true);
       this.hideOtherCards(entity);
-      this.currentZoomedCardRef.current = entity;
+      this.setCurrentZoomed(entity);
     } else {
       // Third click: Zoom out and show all cards
       this.zoomToCard(entity, false);
       this.showAllCards();
-      this.currentZoomedCardRef.current = null;
+      this.setCurrentZoomed(null);
     }
-  };
+  }
 
   handleGlobalClick = (dealing: boolean) => {
     if (dealing) return false; // Block during dealing
-    
+
     // Check if there's a zoomed card - if so, zoom out on ANY click anywhere
-    const currentZoomed = this.currentZoomedCardRef.current;
-    if (currentZoomed && currentZoomed.zoomState === 'zoomed') {
+    const currentZoomed = this.getCurrentZoomed();
+    if (currentZoomed && currentZoomed.zoomState === "zoomed") {
       this.zoomToCard(currentZoomed, false);
       this.showAllCards();
-      this.currentZoomedCardRef.current = null;
+      this.setCurrentZoomed(null);
       return true; // Handled zoom out
     }
-    
+
     return false; // Continue with normal processing
   };
 
   private hideOtherCards(zoomedEntity: SpriteEntity, ms = 300) {
     for (const entity of this.spritesRef.current) {
       if (entity === zoomedEntity) continue; // Skip the zoomed card
-      
+
       const v = entity.view;
+      v.eventMode = "none";
       const fromAlpha = v.alpha;
       const toAlpha = 0; // Fade to invisible
-      
+
       if (fromAlpha === toAlpha) return; // Already hidden
-      
+
       const start = performance.now();
       let raf = 0;
       const step = (now: number) => {
@@ -90,11 +106,12 @@ export class CardInteractions {
   public showAllCards(ms = 300) {
     for (const entity of this.spritesRef.current) {
       const v = entity.view;
+      v.eventMode = "static";
       const fromAlpha = v.alpha;
       const toAlpha = 1; // Fade to fully visible
-      
+
       if (fromAlpha === toAlpha) continue; // Already visible, skip animation
-      
+
       const start = performance.now();
       let raf = 0;
       const step = (now: number) => {
@@ -107,75 +124,69 @@ export class CardInteractions {
     }
   }
 
-  public zoomToCard(entity: SpriteEntity, zoomIn: boolean, ms = 300) {
-    const map = this.hoverAnimRef.current;
-    const cancel = map.get(entity);
-    if (cancel) cancelAnimationFrame(cancel);
+  unzoomCurrent() {
+  const app = this.getApp();
+  const zoomed = this.getCurrentZoomed();
+  if (!app || !zoomed) return;
 
-    const v = entity.view;
-    const app = this.appRef.current;
-    if (!app) return;
+  const v = zoomed.view;
 
-    const fromScale = v.scale.x;
-    const fromX = v.position.x;
-    const fromY = v.position.y;
+  // Pull saved transform
+  // @ts-expect-error - restore ad-hoc metadata
+  const orig = v.__orig as
+    | { x: number; y: number; sx: number; sy: number; rot: number; z: number }
+    | undefined;
 
-    let toScale: number;
-    let toX: number;
-    let toY: number;
+  const toX = orig?.x ?? v.x;
+  const toY = orig?.y ?? v.y;
+  const toS = orig?.sx ?? v.scale.x;
+  const toZ = orig?.z ?? 0;
 
-    if (zoomIn) {
-      // Zoom in: move to exact center and scale up
-      toScale = 1.8; // Moderate zoom that fits in canvas
-      toX = app.renderer.width / 2;
-      toY = app.renderer.height / 2;
-      entity.zoomState = 'zoomed';
-    } else {
-      // Zoom out: return to original position
-      const body = entity.body;
-      toScale = 1;
-      toX = (body as any).position.x;
-      toY = (body as any).position.y;
-      entity.zoomState = 'normal';
-    }
+  // Animation setup
+  const fromX = v.x;
+  const fromY = v.y;
+  const fromS = v.scale.x;
+  const durationMs = 250;
 
-    const cancelId = (() => {
-      const start = performance.now();
-      let raf = 0;
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / ms);
-        const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
-        const s = fromScale + (toScale - fromScale) * e;
-        const x = fromX + (toX - fromX) * e;
-        const y = fromY + (toY - fromY) * e;
-        v.scale.set(s, s);
-        // Ensure the card's CENTER is positioned at the target coordinates
-        v.position.x = x;
-        v.position.y = y;
-        if (t < 1) raf = requestAnimationFrame(step);
-        else {
-          // Only remove from animation map if zooming out, keep zoomed cards in map
-          if (!zoomIn) {
-            map.delete(entity);
-          }
-        }
-      };
-      raf = requestAnimationFrame(step);
-      return raf;
-    })();
+  let elapsed = 0;
+  const tick = (delta: number) => {
+    elapsed += (1000 / 60) * delta;
+    const t = Math.min(1, elapsed / durationMs);
+    const e = this.easeOutCubic(t);
 
-    map.set(entity, cancelId);
-    
-    // Keep zoomed card on top
-    if (zoomIn) {
-      v.zIndex = 999999;
-      if (v.parent) {
-        v.parent.setChildIndex(v, v.parent.children.length - 1);
+    v.position.set(
+      fromX + (toX - fromX) * e,
+      fromY + (toY - fromY) * e
+    );
+    const s = fromS + (toS - fromS) * e;
+    v.scale.set(s, s);
+
+    if (t >= 1) {
+      app.ticker.remove(tick);
+
+      // Restore z-index and state
+      v.zIndex = toZ;
+      zoomed.zoomState = 'idle';
+
+      // Restore others
+      const sprites = this.getSprites();
+      for (const s of sprites) {
+        if (s === zoomed) continue;
+        const sv = s.view;
+        sv.alpha = 1;
+        sv.eventMode = "static"; // re-enable interaction
       }
-    } else {
-      v.zIndex = 100;
+
+      // Clear current zoomed and temp metadata
+      this.setCurrentZoomed(null);
+      // @ts-expect-error
+      v.__orig = undefined;
     }
-  }
+  };
+
+  app.ticker.add(tick);
+}
+
 
   private flipEntity(entity: SpriteEntity, ms = 260) {
     const flipping = this.flippingRef.current;
@@ -188,10 +199,10 @@ export class CardInteractions {
       cancelAnimationFrame(cancel);
       this.hoverAnimRef.current.delete(entity);
     }
-    
+
     const view = entity.view;
     view.scale.set(1, 1); // normalize scale before flip
-    entity.zoomState = 'normal'; // Reset zoom state
+    entity.zoomState = "normal"; // Reset zoom state
 
     const start = performance.now();
     const half = ms * 0.5;
