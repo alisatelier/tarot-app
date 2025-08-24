@@ -13,6 +13,7 @@ import {
   recomputeAndApplyBaseScaleWithProfile,
   preScaleEntityForProfile,
 } from "./ResponsiveSizing";
+import { applyLayoutOverrides } from "./interfaces/layout.overrides";
 
 // Import from lib/tarot
 import { mulberry32, hashSeed } from "../../../lib/tarot/rng";
@@ -563,6 +564,7 @@ export default function TarotCanvas() {
     }
 
     // Calculate targets
+    // Calculate targets
     const W = pixiApp.renderer.width;
     const H = pixiApp.renderer.height;
 
@@ -580,6 +582,17 @@ export default function TarotCanvas() {
         angle: s.angle ?? 0,
       }));
     }
+
+    // Tablet-only extra vertical spacing for 5-card
+    const activeProfile =
+      profileRef.current ?? pickProfile(pixiApp.screen.width);
+    targets = applyLayoutOverrides(
+      activeProfile,
+      spread,
+      targets,
+      pixiApp,
+      /* rowGapVH */ 0.05
+    );
 
     // Animate cards to positions
     for (let i = 0; i < spritesRef.current.length; i++) {
