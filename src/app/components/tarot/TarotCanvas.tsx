@@ -15,6 +15,11 @@ import {
 } from "./ResponsiveSizing";
 import { applyLayoutOverrides } from "./interfaces/layout.overrides";
 import { computeSpawnPoint } from "./interfaces/deal.spawn";
+import {
+  QUESTIONS,
+  CATEGORIES,
+  type CategoryId,
+} from "../../../lib/tarot/question";
 
 // Import from lib/tarot
 import { mulberry32, hashSeed } from "../../../lib/tarot/rng";
@@ -187,6 +192,31 @@ export default function TarotCanvas() {
   const baseCardScaleRef = useRef(1);
   const profileRef = useRef<TarotInterfaceProfile | null>(null);
   const interactions = useRef<CardInteractions | null>(null);
+  
+  // Background loading state
+  const [backgroundReady, setBackgroundReady] = useState(false);
+  const backgroundPromiseRef = useRef<Promise<void> | null>(null);
+
+  // Preload background images
+  const preloadBackgrounds = async () => {
+    if (backgroundPromiseRef.current) {
+      return backgroundPromiseRef.current;
+    }
+    
+    backgroundPromiseRef.current = (async () => {
+      const backgroundUrls = [
+        "/cards/canvas/Pink-Desktop.png",
+        "/cards/canvas/Pink-Mobile.png", 
+        "/cards/canvas/Grey-Desktop.png",
+        "/cards/canvas/Grey-Mobile.png"
+      ];
+      
+      await PIXI.Assets.load(backgroundUrls);
+      setBackgroundReady(true);
+    })();
+    
+    return backgroundPromiseRef.current;
+  };
 
   // Store
   const {
@@ -206,6 +236,11 @@ export default function TarotCanvas() {
     colorway,
     setColorway,
   } = useTarotStore();
+
+  // Early background preloading effect
+  useEffect(() => {
+    preloadBackgrounds();
+  }, []);
 
   // PIXI + Matter initialization
   useEffect(() => {
@@ -258,18 +293,37 @@ export default function TarotCanvas() {
 
       let bgSprite: PIXI.Sprite | null = null;
 
-      const mountOrUpdateBg = () => {
+      const mountOrUpdateBg = async () => {
         if (usingGradientRef.current) return;
+        
+        // Ensure background images are preloaded
+        await preloadBackgrounds();
+        
         const w = app.renderer.width;
         const h = app.renderer.height;
         const url = bgPath(useTarotStore.getState().colorway, w, h);
 
+        // Use cached texture since it's preloaded
+        const texture = PIXI.Texture.from(url);
+        
         if (!bgSprite) {
-          bgSprite = new PIXI.Sprite(PIXI.Texture.from(url));
+          bgSprite = new PIXI.Sprite(texture);
           bgSprite.anchor.set(0);
+          bgSprite.alpha = 0; // Start transparent for fade in
           app.stage.addChildAt(bgSprite, 0);
+          
+          // Fade in the PIXI background
+          const fadeIn = () => {
+            if (bgSprite && bgSprite.alpha < 1) {
+              bgSprite.alpha += 0.1;
+              if (bgSprite.alpha < 1) {
+                requestAnimationFrame(fadeIn);
+              }
+            }
+          };
+          requestAnimationFrame(fadeIn);
         } else {
-          bgSprite.texture = PIXI.Texture.from(url);
+          bgSprite.texture = texture;
         }
         coverSpriteTo(app, bgSprite);
         bgRef.current = bgSprite;
@@ -574,18 +628,15 @@ export default function TarotCanvas() {
     }
 
     // Calculate targets
-    // Calculate targets
     const W = pixiApp.renderer.width;
     const H = pixiApp.renderer.height;
 
     let targets: Target[] = [];
     if (spread.id === "horoscope-12") {
+      // Keep the special 6+6 (desktop/tablet) and 3×4 (mobile) logic
       targets = computeHoroscopeTargets(pixiApp);
-    } else if (spread.slots.length === 5) {
-      targets = WINDOWS_5.map((win) => windowCenterTarget(win, W, H));
-    } else if (spread.slots.length === 3) {
-      targets = WINDOWS_3.map((win) => windowCenterTarget(win, W, H));
     } else {
+      // Honor the coordinates you hardcoded in spreads.ts
       targets = spread.slots.map((s: any) => ({
         x: (s.xPerc / 100) * W,
         y: (s.yPerc / 100) * H,
@@ -730,16 +781,34 @@ export default function TarotCanvas() {
   // Save reading
   function saveCurrentReading() {
     if (!seed) return;
+
+    const selectedQ = QUESTIONS.find((q) => q.label === focusText); // <- use spread prompt
+    let safeChoice1 = choice1Text;
+    let safeChoice2 = choice2Text;
+
+    if (spread.id === "path-a-vs-b" && selectedQ) {
+      if (selectedQ.requiresSubDropdown) {
+        const allowed = selectedQ.subOptions ?? [];
+        if (!allowed.includes(safeChoice1)) safeChoice1 = "";
+        if (!allowed.includes(safeChoice2)) safeChoice2 = "";
+      } else {
+        safeChoice1 = selectedQ.pathA;
+        safeChoice2 = selectedQ.pathB;
+      }
+    }
+
     saveReading({
       when: new Date().toISOString(),
       spreadId: spread.id,
       seed,
       colorway,
+      // 'question' remains the user's personal intention
       question,
       meta: {
-        focus: focusText || undefined,
-        choice1: choice1Text || undefined,
-        choice2: choice2Text || undefined,
+        // focus = the chosen A/B prompt
+        focus: focusText || selectedQ?.label || undefined,
+        choice1: safeChoice1 || undefined,
+        choice2: safeChoice2 || undefined,
       },
       cards: useTarotStore.getState().assignments.map((a) => ({
         id: a.cardId,
@@ -750,27 +819,42 @@ export default function TarotCanvas() {
     alert("Reading saved locally.");
   }
 
-  const isFocusChoiceSpread = spread.id === "focus-choice1-choice2";
+  const isFocusChoiceSpread = spread.id === "path-a-vs-b";
+
+  const [selectedCategory, setSelectedCategory] = useState<CategoryId>(
+    CATEGORIES[0].id
+  );
+
+  useEffect(() => {
+    const current = QUESTIONS.find((q) => q.label === focusText);
+    const inCategory = current && current.category === selectedCategory;
+    if (!inCategory) {
+      const first = QUESTIONS.find((q) => q.category === selectedCategory);
+      if (first) {
+        setFocusText(first.label);
+        setChoice1Text(first.requiresSubDropdown ? "" : first.pathA);
+        setChoice2Text(first.requiresSubDropdown ? "" : first.pathB);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory]);
+
+  // Keep Intention blank for all spreads except Pros & Cons.
+  // For Pros & Cons, mirror the selected A/B prompt (focusText) and update live.
+  useEffect(() => {
+    if (spread.id === "path-a-vs-b") {
+      setQuestion(focusText || ""); // dynamically follows Category/Question changes
+    } else {
+      setQuestion(""); // force blank for every other spread
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spread.id, focusText]);
 
   return (
     <div className="w-full">
-      {/* Question input */}
-      <div className="flex flex-col gap-1 mb-4">
-        <label className="text-sm text-neutral-600" htmlFor="reading-question">
-          Question / Intention
-        </label>
-        <input
-          id="reading-question"
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="What guidance are you seeking?"
-          className="w-full px-3 py-2 rounded-xl border"
-        />
-      </div>
-
-      {/* Controls */}
+      {/* Controls row (Spread first) */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
+        {/* Spread select */}
         <select
           className="px-3 py-2 rounded-xl border"
           value={spread.id}
@@ -787,8 +871,9 @@ export default function TarotCanvas() {
           ))}
         </select>
 
+        {/* Colorway */}
         <div className="flex items-center gap-2">
-          <label className="text-sm text-neutral-600">Deck</label>
+          <span className="text-sm text-neutral-600">Colorway</span>
           <select
             className="px-3 py-2 rounded-xl border"
             value={colorway}
@@ -802,66 +887,206 @@ export default function TarotCanvas() {
         <button
           onClick={dealToSpread}
           className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
-          disabled={dealing}
+          disabled={
+            // Optional: block pull until A/B chosen for the special case
+            (() => {
+              if (spread.id !== "path-a-vs-b") return dealing;
+              const sel = QUESTIONS.find((q) => q.label === focusText);
+              const needsAB = !!sel?.requiresSubDropdown;
+              return dealing || (needsAB && (!choice1Text || !choice2Text));
+            })()
+          }
         >
           {dealing ? "Pulling..." : "Pull Spread"}
         </button>
 
         <button
           onClick={saveCurrentReading}
-          className="px-4 py-2 rounded-xl border"
+          className="px-4 py-2 rounded-xl border hover:bg-neutral-100 transition"
         >
           Save Reading
         </button>
-
-        {seed && (
-          <span className="text-sm text-neutral-500">
-            Shareable: add{" "}
-            <code>
-              ?seed={seed}&colorway={colorway}
-            </code>{" "}
-            to this page URL
-          </span>
-        )}
       </div>
 
-      {/* Focus/Choice inputs */}
+      {/* Path A/B panel (only for that spread) */}
       {isFocusChoiceSpread && (
-        <div className="grid md:grid-cols-2 gap-3 mb-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-neutral-600" htmlFor="choice1-text">
-              Choice #1
-            </label>
-            <input
-              id="choice1-text"
-              type="text"
-              value={choice1Text}
-              onChange={(e) => setChoice1Text(e.target.value)}
-              placeholder="Describe option 1"
-              className="w-full px-3 py-2 rounded-xl border"
-            />
+        <div className="w-full max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-3 p-3 mb-4 rounded-xl border bg-white/60">
+          {/* Category + Question */}
+          <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-sm text-neutral-600" htmlFor="qa-category">
+                Category
+              </label>
+              <select
+                id="qa-category"
+                className="w-full px-3 py-2 rounded-xl border"
+                value={selectedCategory}
+                onChange={(e) => {
+                  const cat = e.target.value as CategoryId;
+                  setSelectedCategory(cat);
+                  const first = QUESTIONS.find((q) => q.category === cat);
+                  if (first) {
+                    // Always set the spread focus + A/B from the question
+                    setFocusText(first.label);
+                    setChoice1Text(
+                      first.requiresSubDropdown ? "" : first.pathA
+                    );
+                    setChoice2Text(
+                      first.requiresSubDropdown ? "" : first.pathB
+                    );
+                  }
+                }}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-sm text-neutral-600" htmlFor="qa-question">
+                Question
+              </label>
+              <select
+                id="qa-question"
+                className="w-full px-3 py-2 rounded-xl border"
+                value={focusText || ""} // <- tie to focusText (the spread prompt)
+                onChange={(e) => {
+                  const selected = QUESTIONS.find(
+                    (q) => q.label === e.target.value
+                  );
+                  if (selected) {
+                    setFocusText(selected.label);
+                    setChoice1Text(
+                      selected.requiresSubDropdown ? "" : selected.pathA
+                    );
+                    setChoice2Text(
+                      selected.requiresSubDropdown ? "" : selected.pathB
+                    );
+                  }
+                }}
+              >
+                {QUESTIONS.filter((q) => q.category === selectedCategory).map(
+                  (q) => (
+                    <option key={q.id} value={q.label}>
+                      {q.label}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-neutral-600" htmlFor="choice2-text">
-              Choice #2
-            </label>
-            <input
-              id="choice2-text"
-              type="text"
-              value={choice2Text}
-              onChange={(e) => setChoice2Text(e.target.value)}
-              placeholder="Describe option 2"
-              className="w-full px-3 py-2 rounded-xl border"
-            />
-          </div>
+
+          {/* Special case: dual dropdowns (no duplicates) */}
+          {(() => {
+            const sel = QUESTIONS.find((q) => q.label === focusText);
+            if (sel?.requiresSubDropdown) {
+              return (
+                <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <span className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                      Path A
+                    </span>
+                    <select
+                      id="choice1-text"
+                      className="w-full px-3 py-2 rounded-xl border"
+                      value={choice1Text}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setChoice1Text(v);
+                        if (v && v === choice2Text) setChoice2Text("");
+                      }}
+                    >
+                      <option value="">Select…</option>
+                      {sel.subOptions?.map((opt) => (
+                        <option key={"A-" + opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                      Path B
+                    </span>
+                    <select
+                      id="choice2-text"
+                      className="w-full px-3 py-2 rounded-xl border"
+                      value={choice2Text}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setChoice2Text(v);
+                        if (v && v === choice1Text) setChoice1Text("");
+                      }}
+                    >
+                      <option value="">Select…</option>
+                      {sel.subOptions
+                        ?.filter((opt) => opt !== choice1Text)
+                        .map((opt) => (
+                          <option key={"B-" + opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+              );
+            }
+
+            // Default: read-only A/B labels (no free text)
+            const selDefault = QUESTIONS.find((q) => q.label === focusText);
+            return (
+              <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <span className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                    Path A
+                  </span>
+                  <div className="px-3 py-2 rounded-xl border bg-neutral-50">
+                    {selDefault?.pathA ?? "—"}
+                  </div>
+                </div>
+                <div>
+                  <span className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">
+                    Path B
+                  </span>
+                  <div className="px-3 py-2 rounded-xl border bg-neutral-50">
+                    {selDefault?.pathB ?? "—"}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
+
+      {/* Intention AFTER spread selection (independent of Path A/B) */}
+      <div className="mb-2">
+        <label className="text-sm text-neutral-600" htmlFor="reading-question">
+          Intention (optional)
+        </label>
+        <input
+          id="reading-question"
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="What guidance are you seeking?"
+          className="w-full px-3 py-2 rounded-xl border"
+        />
+      </div>
 
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
-      />
+        className="tarot-canvas-container w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
+      >
+        {/* CSS background fallback */}
+        <div 
+          className={`tarot-canvas-background ${colorway} ${backgroundReady ? 'loaded' : ''}`}
+          aria-hidden="true"
+        />
+      </div>
       <p className="mt-3 text-sm text-neutral-600">
         Tip: Click a card to reveal → click again to zoom.
       </p>

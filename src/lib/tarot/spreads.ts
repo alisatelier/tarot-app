@@ -10,97 +10,130 @@ const row = (yPerc: number, keys: string[], angle = 0) =>
   }));
 
 export const spreads: SpreadDef[] = [
+  // 3-card
   {
-    id: "ppf",
+    id: "past-present-future",
     label: "Past • Present • Future",
-    slots: row(50, ["past", "present", "future"]),
+    slots: [
+      { key: "past", xPerc: 30, yPerc: 50 },
+      { key: "present", xPerc: 50, yPerc: 50 },
+      { key: "future", xPerc: 70, yPerc: 50 },
+    ],
   },
   {
-    id: "focus-let-go-forward",
-    label: "Focus • Let Go • Moving Forward",
-    slots: row(50, ["focus", "let_go", "forward"]),
+    id: "focus-forward-letgo",
+    label: "Focus • Moving Forward • Letting Go",
+    slots: [
+      { key: "focus", xPerc: 50, yPerc: 35 },
+      { key: "forward", xPerc: 30, yPerc: 65 },
+      { key: "letgo", xPerc: 70, yPerc: 65 },
+    ],
   },
   {
-    id: "focus-choice1-choice2",
-    label: "Focus • Choice #1 • Choice #2",
-    slots: row(50, ["focus", "choice_1", "choice_2"]),
+    id: "know-dont-need",
+    label: "What I Know • What I Don't • What I Need To ",
+    slots: [
+      { key: "know", xPerc: 50, yPerc: 35 },
+      { key: "dontknow", xPerc: 30, yPerc: 65 },
+      { key: "need", xPerc: 70, yPerc: 65 },
+    ],
+  },
+
+  // 5-card
+  {
+    id: "pp-issues-advice-outcome",
+    label: "Past • Present • Hidden Issues • Advice • Outcome",
+    slots: 
+    [
+      { key: "past", xPerc: 16, yPerc: 50 },
+      { key: "present", xPerc: 33, yPerc: 50 },
+      { key: "hidden", xPerc: 50, yPerc: 50 },
+      { key: "advice", xPerc: 67, yPerc: 50 },
+      { key: "outcome", xPerc: 84, yPerc: 50 },
+    ]
+
   },
   {
-    id: "pros-cons-pref-action-goal",
-    label: "Pros • Cons • Preference • Action • End Goal",
-    slots: row(40, ["pros", "cons", "preference"]).concat(
-      row(62, ["action", "end_goal"])
-    ),
+    id: "goal-pos-block-bridge-lesson",
+    label: "Goal • Current Status • Block • Bridge • Lesson",
+    slots: [
+      { key: "goal", xPerc: 16, yPerc: 50 },
+      { key: "current", xPerc: 33, yPerc: 50 },
+      { key: "block", xPerc: 50, yPerc: 50 },
+      { key: "bridge", xPerc: 67, yPerc: 50 },
+      { key: "lesson", xPerc: 84, yPerc: 50 },
+    ]
   },
   {
-    id: "past-present-hidden-advice-outcome",
-    label: "Past • Present • Hidden • Advice • Outcome",
-    slots: row(40, ["past", "present", "hidden"]).concat(
-      row(62, ["advice", "outcome"])
-    ),
+    id: "path-a-vs-b",
+    label: "Pros & Cons of Two Choices",
+    // Desktop/Tablet default: focus top, A cluster bottom-left, B cluster bottom-right
+    slots: [
+      { key: "focus", xPerc: 50, yPerc: 30 },
+      { key: "prosA", xPerc: 20, yPerc: 65 },
+      { key: "consA", xPerc: 35, yPerc: 65 },
+      { key: "prosB", xPerc: 65, yPerc: 65 },
+      { key: "consB", xPerc: 80, yPerc: 65 },
+    ],
   },
-  // 12-card Horoscope (Aries→Pisces), starts at current season
 ];
 
-const ZODIAC = [
+
+export const ZODIAC = [
   "Aries","Taurus","Gemini","Cancer","Leo","Virgo",
   "Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"
 ];
 
-const makeRing = (keys: string[]) => {
-  // 12 around an ellipse
-  const slots: SpreadSlot[] = [];
-  for (let i = 0; i < keys.length; i++) {
-    const t = (i / keys.length) * Math.PI * 2;
-    const x = 50 + Math.cos(t) * 32; // %
-    const y = 50 + Math.sin(t) * 22; // %
-    slots.push({ key: keys[i], xPerc: x, yPerc: y, angle: 0 });
-  }
-  return slots;
-};
+// Tropical date ranges (approx)
+const RANGES: { sign: string; start: [number, number]; end: [number, number] }[] = [
+  { sign: "Aries",      start: [3,21],  end: [4,19]  },
+  { sign: "Taurus",     start: [4,20],  end: [5,20]  },
+  { sign: "Gemini",     start: [5,21],  end: [6,20]  },
+  { sign: "Cancer",     start: [6,21],  end: [7,22]  },
+  { sign: "Leo",        start: [7,23],  end: [8,22]  },
+  { sign: "Virgo",      start: [8,23],  end: [9,22]  },
+  { sign: "Libra",      start: [9,23],  end: [10,22] },
+  { sign: "Scorpio",    start: [10,23], end: [11,21] },
+  { sign: "Sagittarius",start: [11,22], end: [12,21] },
+  { sign: "Capricorn",  start: [12,22], end: [1,19]  },
+  { sign: "Aquarius",   start: [1,20],  end: [2,18]  },
+  { sign: "Pisces",     start: [2,19],  end: [3,20]  },
+];
 
-export function currentSeasonIndex(d: Date = new Date()) {
-  // Rough boundaries (tropical). Adjust if you want exact UTC cutoffs.
-  // Month/day thresholds:
-  // Aries ~ Mar 21, Taurus ~ Apr 20, Gemini ~ May 21, Cancer ~ Jun 21,
-  // Leo ~ Jul 23, Virgo ~ Aug 23, Libra ~ Sep 23, Scorpio ~ Oct 23,
-  // Sag ~ Nov 22, Cap ~ Dec 22, Aquarius ~ Jan 20, Pisces ~ Feb 19.
-  const m = d.getMonth() + 1; // 1-12
-  const day = d.getDate();
-  const idx = (() => {
-    if (m === 3 && day >= 21 || (m > 3 && m < 4)) return 0;
-    if (m === 4 && day >= 20 || (m > 4 && m < 5)) return 1;
-    if (m === 5 && day >= 21 || (m > 5 && m < 6)) return 2;
-    if (m === 6 && day >= 21 || (m > 6 && m < 7)) return 3;
-    if (m === 7 && day >= 23 || (m > 7 && m < 8)) return 4;
-    if (m === 8 && day >= 23 || (m > 8 && m < 9)) return 5;
-    if (m === 9 && day >= 23 || (m > 9 && m < 10)) return 6;
-    if (m === 10 && day >= 23 || (m > 10 && m < 11)) return 7;
-    if (m === 11 && day >= 22 || (m > 11 && m < 12)) return 8;
-    if (m === 12 && day >= 22 || (m === 1 && day < 20)) return 9;
-    if (m === 1 && day >= 20 || (m > 1 && m < 2)) return 10;
-    // Pisces default
-    return 11;
-  })();
-  return idx;
+function isOnOrAfter(m: number, d: number, sm: number, sd: number) {
+  if (m === sm) return d >= sd;
+  return m > sm;
+}
+function isOnOrBefore(m: number, d: number, em: number, ed: number) {
+  if (m === em) return d <= ed;
+  return m < em;
 }
 
-// in spreads.ts
-slots: [
-  { key: "pos1", xPerc: 20, yPerc: 50, order: 1 },
-  { key: "pos2", xPerc: 40, yPerc: 50, order: 2 },
-  { key: "pos3", xPerc: 60, yPerc: 50, order: 3 },
-  { key: "pos4", xPerc: 80, yPerc: 40, order: 4 },
-  { key: "pos5", xPerc: 80, yPerc: 60, order: 5 },
-]
+export function currentSeasonIndex(d = new Date()): number {
+  const m = d.getMonth() + 1, day = d.getDate();
+  for (let i = 0; i < RANGES.length; i++) {
+    const { start: [sm, sd], end: [em, ed] } = RANGES[i];
+    const wraps = em < sm; // Capricorn crosses year boundary
+    const inRange = wraps
+      ? (isOnOrAfter(m, day, sm, sd) || isOnOrBefore(m, day, em, ed))
+      : (isOnOrAfter(m, day, sm, sd) && isOnOrBefore(m, day, em, ed));
+    if (inRange) return i;
+  }
+  return 0;
+}
 
-
-export function horoscopeSpreadDef(startFromSeason = currentSeasonIndex()) {
-  // Rotate Aries→Pisces so the first slot is "current season"
+export function horoscopeSpreadDef(startFromSeason = currentSeasonIndex()): SpreadDef {
   const rotated = [...ZODIAC.slice(startFromSeason), ...ZODIAC.slice(0, startFromSeason)];
+  const topKeys = rotated.slice(0,6).map(s => s.toLowerCase());
+  const botKeys = rotated.slice(6).map(s => s.toLowerCase());
   return {
     id: "horoscope-12",
-    label: "Horoscope (Current Season Start)",
-    slots: makeRing(rotated.map((z) => z.toLowerCase())),
-  } as SpreadDef;
+    label: "Horoscope (starts at current season)",
+    // Desktop/Tablet: 6 cards top row, 6 cards bottom row
+    slots: [
+      ...row(35, topKeys),
+      ...row(65, botKeys),
+    ],
+    columns: 6,
+  };
 }

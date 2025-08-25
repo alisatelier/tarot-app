@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import type { SpreadDef } from "../../../lib/tarot/spreads";
-import { spreads, horoscopeSpreadDef } from "../../../lib/tarot/spreads";
+import { spreads as BASE_SPREADS, horoscopeSpreadDef } from "../../../lib/tarot/spreads";
 import { CARDS_CATALOG } from "../../../lib/tarot/cards";
 
 type SlotAssignment = { slotKey: string; cardId: string; reversed: boolean };
@@ -38,10 +38,19 @@ type TarotState = {
   resetTexts: () => void;
 };
 
-export const useTarotStore = create<TarotState>((set) => ({
-  spread: spreads[0],
-  allSpreads: [...spreads, horoscopeSpreadDef()],
-  assignments: [],
+const buildAllSpreads = (): SpreadDef[] => {
+  return [...BASE_SPREADS, horoscopeSpreadDef()];
+};
+
+
+export const useTarotStore = create<TarotState>((set) => {
+  const all = buildAllSpreads();
+  const initial = all[0];
+
+  return {
+    spread: initial,
+    allSpreads: all,
+    assignments: [],
 
   question: "",
   focusText: "",
@@ -63,6 +72,9 @@ export const useTarotStore = create<TarotState>((set) => ({
   setColorway: (c) => set({ colorway: c }),
 
   resetTexts: () => set({ question: "", focusText: "", choice1Text: "", choice2Text: "" }),
+  }
 }));
+
+
 
 export const ALL_CARD_IDS = CARDS_CATALOG.map((c) => c.id);
