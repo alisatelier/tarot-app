@@ -1,9 +1,9 @@
-export type SpreadSlot = { xPerc: number; yPerc: number; angle?: number; key: string };
+export type SpreadSlot = { xPerc: number; yPerc: number; angle?: number; idKey: string; cardLabel?: string };
 export type SpreadDef = { id: string; label: string; slots: SpreadSlot[]; columns?: number };
 
 const row = (yPerc: number, keys: string[], angle = 0) =>
   keys.map((key, i) => ({
-    key,
+    idKey: key,
     xPerc: ((i + 1) / (keys.length + 1)) * 100,
     yPerc,
     angle,
@@ -15,27 +15,27 @@ export const spreads: SpreadDef[] = [
     id: "past-present-future",
     label: "Past • Present • Future",
     slots: [
-      { key: "past", xPerc: 30, yPerc: 50 },
-      { key: "present", xPerc: 50, yPerc: 50 },
-      { key: "future", xPerc: 70, yPerc: 50 },
+      { idKey: "past-3", cardLabel: "Past", xPerc: 30, yPerc: 50 },
+      { idKey: "present-3", cardLabel: "Present", xPerc: 50, yPerc: 50 },
+      { idKey: "future-3", cardLabel: "Future", xPerc: 70, yPerc: 50 },
     ],
   },
   {
     id: "focus-forward-letgo",
     label: "Focus • Moving Forward • Letting Go",
     slots: [
-      { key: "focus", xPerc: 50, yPerc: 35 },
-      { key: "forward", xPerc: 30, yPerc: 65 },
-      { key: "letgo", xPerc: 70, yPerc: 65 },
+      { idKey: "focus-3", cardLabel: "Focus", xPerc: 50, yPerc: 35 },
+      { idKey: "forward-3", cardLabel: "Moving Forward", xPerc: 30, yPerc: 65 },
+      { idKey: "letgo-3", cardLabel: "Letting Go", xPerc: 70, yPerc: 65 },
     ],
   },
   {
     id: "know-dont-need",
     label: "What I Know • What I Don't • What I Need To ",
     slots: [
-      { key: "know", xPerc: 50, yPerc: 35 },
-      { key: "dontknow", xPerc: 30, yPerc: 65 },
-      { key: "need", xPerc: 70, yPerc: 65 },
+      { idKey: "know-3", cardLabel: "What I Know", xPerc: 50, yPerc: 35 },
+      { idKey: "dontknow-3", cardLabel: "What I Don't Know", xPerc: 30, yPerc: 65 },
+      { idKey: "need-3", cardLabel: "What I Need To Know", xPerc: 70, yPerc: 65 },
     ],
   },
 
@@ -45,11 +45,11 @@ export const spreads: SpreadDef[] = [
     label: "Past • Present • Hidden Issues • Advice • Outcome",
     slots: 
     [
-      { key: "past", xPerc: 16, yPerc: 50 },
-      { key: "present", xPerc: 33, yPerc: 50 },
-      { key: "hidden", xPerc: 50, yPerc: 50 },
-      { key: "advice", xPerc: 67, yPerc: 50 },
-      { key: "outcome", xPerc: 84, yPerc: 50 },
+      { idKey: "past-5", cardLabel: "Past", xPerc: 16, yPerc: 50 },
+      { idKey: "present-5", cardLabel: "Present", xPerc: 33, yPerc: 50 },
+      { idKey: "hidden-5", cardLabel: "Hidden Issues", xPerc: 50, yPerc: 50 },
+      { idKey: "advice-5", cardLabel: "Advice", xPerc: 67, yPerc: 50 },
+      { idKey: "outcome-5", cardLabel: "Outcome", xPerc: 84, yPerc: 50 },
     ]
 
   },
@@ -57,26 +57,30 @@ export const spreads: SpreadDef[] = [
     id: "goal-pos-block-bridge-lesson",
     label: "Goal • Current Status • Block • Bridge • Lesson",
     slots: [
-      { key: "goal", xPerc: 16, yPerc: 50 },
-      { key: "current", xPerc: 33, yPerc: 50 },
-      { key: "block", xPerc: 50, yPerc: 50 },
-      { key: "bridge", xPerc: 67, yPerc: 50 },
-      { key: "lesson", xPerc: 84, yPerc: 50 },
+      { idKey: "goal-5", cardLabel: "My Goal", xPerc: 16, yPerc: 50 },
+      { idKey: "current-5", cardLabel: "Current Status", xPerc: 33, yPerc: 50 },
+      { idKey: "block-5", cardLabel: "What is Blocking My Goal", xPerc: 50, yPerc: 50 },
+      { idKey: "bridge-5", cardLabel: "What I Need to Bridge the Gap", xPerc: 67, yPerc: 50 },
+      { idKey: "lesson-5", cardLabel: "What Lesson There is to Learn", xPerc: 84, yPerc: 50 },
     ]
   },
-  {
+];
+
+// Dynamic spread function for Path A vs B
+export function pathAVsBSpreadDef(pathA: string = "Path A", pathB: string = "Path B"): SpreadDef {
+  return {
     id: "path-a-vs-b",
     label: "This or That With Pros and Cons",
     // Desktop/Tablet default: focus top, A cluster bottom-left, B cluster bottom-right
     slots: [
-      { key: "focus", xPerc: 50, yPerc: 30 },
-      { key: "prosA", xPerc: 20, yPerc: 65 },
-      { key: "consA", xPerc: 35, yPerc: 65 },
-      { key: "prosB", xPerc: 65, yPerc: 65 },
-      { key: "consB", xPerc: 80, yPerc: 65 },
+      { idKey: "focus-5", cardLabel: "Focus", xPerc: 50, yPerc: 30 },
+      { idKey: "prosA-5", cardLabel: `Pros of\n${pathA}`, xPerc: 20, yPerc: 65 },
+      { idKey: "consA-5", cardLabel: `Cons of\n${pathA}`, xPerc: 35, yPerc: 65 },
+      { idKey: "prosB-5", cardLabel: `Pros of\n${pathB}`, xPerc: 65, yPerc: 65 },
+      { idKey: "consB-5", cardLabel: `Cons of\n${pathB}`, xPerc: 80, yPerc: 65 },
     ],
-  },
-];
+  };
+}
 
 
 export const ZODIAC = [

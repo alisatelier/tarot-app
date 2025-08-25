@@ -11,7 +11,10 @@ import { pickProfile } from "./interfaces/profile.registry";
 import type { TarotInterfaceProfile } from "./interfaces/types";
 import {
   recomputeAndApplyBaseScaleWithProfile,
+  preScaleEntityForProfile,
 } from "./ResponsiveSizing";
+import { applyLayoutOverrides } from "./interfaces/layout.overrides";
+import { computeSpawnPoint } from "./interfaces/deal.spawn";
 import {
   QUESTIONS,
   CATEGORIES,
@@ -19,6 +22,7 @@ import {
 } from "../../../lib/tarot/question";
 
 // Import from lib/tarot
+import { mulberry32, hashSeed } from "../../../lib/tarot/rng";
 import { saveReading } from "../../../lib/tarot/persistence";
 import {
   frontSrcFor,
@@ -26,13 +30,26 @@ import {
   type Colorway,
 } from "../../../lib/tarot/cards";
 
-// Modular functions
-import { type Target, type SpriteEntity } from "./animations/cardTween";
-import { dealToSpread as dealToSpreadModular } from "./animations/dealToSpread";
+const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
-const { Engine, Runner, Bodies, Composite } = Matter;
+// Types
+type Target = { x: number; y: number; angle?: number };
+type SpriteEntity = {
+  body: any;
+  cardId: string;
+  view: PIXI.Container;
+  front: PIXI.Sprite;
+  back: PIXI.Sprite;
+  clip: PIXI.Graphics;
+  isFaceUp: boolean;
+  reversed: boolean;
+  slotKey: string;
+  zoomState: "normal" | "zoomed";
+};
 
-// Helper functions
+// Constants - removed unused WINDOWS_5, WINDOWS_3, and windowCenterTarget
+
+
 function bgPath(colorway: "pink" | "grey", w: number, h: number) {
   const variant = w >= h ? "Desktop" : "Mobile";
   const tone = colorway === "pink" ? "Pink" : "Grey";
@@ -53,7 +70,7 @@ function drawGradientBg(
   app: PIXI.Application,
   from: number,
   to: number,
-  gradientRef: MutableRefObject<PIXI.Graphics | null>
+  gradientRef: MutableRefObject<PIXI.Sprite | null>
 ) {
   if (gradientRef.current) {
     app.stage.removeChild(gradientRef.current);
@@ -87,14 +104,58 @@ function drawGradientBg(
   };
   app.ticker.add(fade);
 
-  // Store as PIXI.Graphics-compatible (actually it's a Sprite, but for type compatibility)
-  gradientRef.current = sprite as any;
+  gradientRef.current = sprite;
+}
+
+function pickCardsDeterministic(seedStr: string, n: number) {
+  const rnd = mulberry32(hashSeed(seedStr));
+  const ids = [...ALL_CARD_IDS];
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids.slice(0, n).map((id) => ({ id, reversed: rnd() < 0.5 }));
+}
+
+function getSeed(): string {
+  const url = new URL(window.location.href);
+  const s = url.searchParams.get("seed");
+  return s || `reading-${Date.now()}`;
+}
+
+function computeHoroscopeTargets(app: PIXI.Application): Target[] {
+  const W = app.renderer.width;
+  const H = app.renderer.height;
+
+  const isDesktop = W >= 768;
+  const cols = isDesktop ? 6 : 3;
+  const rows = isDesktop ? 2 : 4;
+
+  const padX = 8;
+  const padY = 8;
+  const cellW = (100 - padX * 2) / cols;
+  const cellH = (100 - padY * 2) / rows;
+
+  const targets: Target[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (targets.length === 12) break;
+      const xPerc = padX + cellW * (c + 0.5);
+      const yPerc = padY + cellH * (r + 0.5);
+      targets.push({
+        x: (xPerc / 100) * W,
+        y: (yPerc / 100) * H,
+        angle: 0,
+      });
+    }
+  }
+  return targets;
 }
 
 export default function TarotCanvas() {
   // Refs
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const gradientRef = useRef<PIXI.Graphics | null>(null);
+  const gradientRef = useRef<PIXI.Sprite | null>(null);
   const usingGradientRef = useRef(false);
   const gradientFromRef = useRef(0x000000);
   const gradientToRef = useRef(0x535b73);
@@ -105,6 +166,7 @@ export default function TarotCanvas() {
   const spritesRef = useRef<SpriteEntity[]>([]);
   const deckBodyRef = useRef<any>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const labelLayerRef = useRef<PIXI.Container | null>(null);
   const [seed, setSeed] = useState<string | null>(null);
   const flippingRef = useRef<Set<SpriteEntity>>(new Set());
   const hoverAnimRef = useRef<Map<SpriteEntity, number>>(new Map());
@@ -116,9 +178,6 @@ export default function TarotCanvas() {
   // Background loading state
   const [backgroundReady, setBackgroundReady] = useState(false);
   const backgroundPromiseRef = useRef<Promise<void> | null>(null);
-  
-  // Initialization state
-  const [initialized, setInitialized] = useState(false);
 
   // Preload background images
   const preloadBackgrounds = async () => {
@@ -158,6 +217,7 @@ export default function TarotCanvas() {
     setChoice2Text,
     colorway,
     setColorway,
+    updateSpreadsForQuestion,
   } = useTarotStore();
 
   // Early background preloading effect
@@ -198,11 +258,18 @@ export default function TarotCanvas() {
       if (destroyed) return;
 
       appRef.current = app;
+
       profileRef.current = pickProfile(app.screen.width);
 
       app.stage.eventMode = "static";
       app.stage.hitArea = app.screen;
       app.stage.sortableChildren = true;
+
+      // Create a dedicated overlay layer for labels so they don't rotate with cards
+      const labelLayer = new PIXI.Container();
+      labelLayer.zIndex = 9999;
+      app.stage.addChild(labelLayer);
+      labelLayerRef.current = labelLayer;
 
       if (containerRef.current) {
         containerRef.current.appendChild(app.view as HTMLCanvasElement);
@@ -272,7 +339,7 @@ export default function TarotCanvas() {
         app.renderer.resolution = dpr;
         app.renderer.resize(el.clientWidth, el.clientHeight);
 
-        // 2) Redraw background
+        // 2) Redraw background (yours)
         ensureBackdrop();
 
         // 3) Select the interface profile based on the NEW width
@@ -281,6 +348,7 @@ export default function TarotCanvas() {
         profileRef.current = nextProfile;
 
         // 4) Recompute and apply base (non-zoom) card scale for this profile
+        //    (safe to call on every resize; it no-ops while a card is zoomed)
         recomputeAndApplyBaseScaleWithProfile(
           appRef,
           spritesRef,
@@ -288,6 +356,9 @@ export default function TarotCanvas() {
           baseCardScaleRef,
           nextProfile
         );
+
+        // (optional) If you want to react when the profile bucket changes:
+        // if (changed) console.debug("[Tarot] Interface profile:", nextProfile.id);
       };
 
       resize();
@@ -339,9 +410,6 @@ export default function TarotCanvas() {
       const runner = Runner.create();
       Runner.run(runner, engine);
       runnerRef.current = runner;
-      
-      // Mark as initialized now that PIXI app and Matter engine are ready
-      setInitialized(true);
 
       const cleanup = () => {
         ro.disconnect();
@@ -354,7 +422,6 @@ export default function TarotCanvas() {
         appRef.current = null;
         runnerRef.current = null;
         deckBodyRef.current = null;
-        setInitialized(false);
       };
       cleanupRef.current = cleanup;
     })();
@@ -362,6 +429,7 @@ export default function TarotCanvas() {
     return () => {
       destroyed = true;
       if (cleanupRef.current) cleanupRef.current();
+      if (labelLayerRef.current) { labelLayerRef.current.destroy({ children: true }); labelLayerRef.current = null; }
     };
   }, []);
 
@@ -380,45 +448,281 @@ export default function TarotCanvas() {
     );
   }, []);
 
-  // Deal cards to spread - using modular version
+  // Deal cards to spread
   async function dealToSpread() {
+    if (!appRef.current || !engineRef.current || !deckBodyRef.current) return;
+    if (ALL_CARD_IDS.length === 0) {
+      console.error("[Tarot] No cards found.");
+      alert("No cards found. Please add cards to your deck.");
+      return;
+    }
     if (dealing) return;
-    
-    await dealToSpreadModular({
-      // Core refs
-      appRef,
-      engineRef,
-      spritesRef,
-      profileRef,
-      baseCardScaleRef,
-      currentZoomedCardRef,
-      hoverAnimRef,
-      
-      // Background refs
-      bgRef,
-      gradientRef,
-      usingGradientRef,
-      gradientFromRef,
-      gradientToRef,
-      
-      // Current spread and state
-      spread,
-      colorway,
-      
-      // State setters
-      setDealing,
-      setSeed,
-      setAssignments,
-      
-      // Interactions
-      interactions,
-      
-      // Background drawing function
-      drawGradientBg,
-    });
 
-    // Apply final scaling after dealing
-    const profile = profileRef.current ?? pickProfile(appRef.current!.screen.width);
+    usingGradientRef.current = true;
+    gradientFromRef.current = 0x000000;
+    gradientToRef.current = 0x535b73;
+
+      // Clear old labels
+    if (labelLayerRef.current) { labelLayerRef.current.removeChildren(); }
+
+    const pixiApp = appRef.current!;
+
+    // Label layer: one container for all card labels (keeps them independent of card rotation)
+    if (!(pixiApp.stage as any).__labelLayer) {
+      const layer = new PIXI.Container();
+      (pixiApp.stage as any).__labelLayer = layer;
+      pixiApp.stage.addChild(layer);
+    }
+    const labelLayer: PIXI.Container = (pixiApp.stage as any).__labelLayer;
+    labelLayer.removeChildren();
+
+
+    if (bgRef.current) {
+      pixiApp.stage.removeChild(bgRef.current);
+      bgRef.current.destroy(true);
+      bgRef.current = null;
+    }
+    drawGradientBg(
+      pixiApp,
+      gradientFromRef.current,
+      gradientToRef.current,
+      gradientRef
+    );
+
+    setDealing(true);
+    currentZoomedCardRef.current = null;
+
+    // Clean up previous cards
+    for (const s of spritesRef.current) {
+      const cancel = hoverAnimRef.current.get(s);
+      if (cancel) cancelAnimationFrame(cancel);
+      hoverAnimRef.current.delete(s);
+
+      s.view.mask = null;
+      s.view.destroy({ children: true });
+      Composite.remove(engineRef.current!.world, s.body);
+    }
+    spritesRef.current = [];
+
+    const seedStr = getSeed();
+    setSeed(seedStr);
+    const picks = pickCardsDeterministic(seedStr, spread.slots.length);
+
+    const newAssignments = picks.map((p, i) => ({
+      slotKey: spread.slots[i].idKey,
+      cardId: p.id,
+      reversed: p.reversed,
+    }));
+    setAssignments(newAssignments);
+
+    // Preload textures
+    const urlsToLoad = [
+      backSrcFor(colorway),
+      ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
+    ];
+    await PIXI.Assets.load(urlsToLoad);
+
+    // Create cards
+    const defaultCardW = 200;
+    const defaultCardH = 300;
+
+    // Compute spawn once per deal (uses current viewport)
+    const { x: spawnX, y: spawnY } = computeSpawnPoint(
+      pixiApp,
+      defaultCardH,
+      /* yFactor */ 0.9
+    );
+
+    for (let i = 0; i < spread.slots.length; i++) {
+      const { slotKey, cardId, reversed } = newAssignments[i];
+
+      const body = Bodies.rectangle(
+        spawnX,
+        spawnY,
+        defaultCardW,
+        defaultCardH,
+        {
+          frictionAir: 0.16,
+          isSensor: true,
+          collisionFilter: { group: -1, category: 0, mask: 0 },
+        }
+      );
+      Composite.add(engineRef.current!.world, body);
+
+      const corner = Math.min(defaultCardW, defaultCardH) * 0.12;
+
+      const view = new PIXI.Container();
+      view.zIndex = 100 + i * 3;
+      view.eventMode = "static";
+      view.cursor = "pointer";
+      pixiApp.stage.addChild(view);
+
+      // Match the PIXI view to the spawn immediately (no 1-frame flicker)
+      view.position.set(spawnX, spawnY);
+
+      const frontTex = PIXI.Texture.from(frontSrcFor(cardId, colorway));
+      frontTex.source.scaleMode = "linear";
+
+      const backTex = PIXI.Texture.from(backSrcFor(colorway));
+      backTex.source.scaleMode = "linear";
+
+      const front = new PIXI.Sprite(frontTex);
+      const back = new PIXI.Sprite(backTex);
+
+      front.anchor.set(0.5);
+      back.anchor.set(0.5);
+      front.width = defaultCardW;
+      front.height = defaultCardH;
+      back.width = defaultCardW;
+      back.height = defaultCardH;
+
+      view.addChild(front);
+      view.addChild(back);
+
+      front.visible = false;
+      back.visible = true;
+
+      const clip = new PIXI.Graphics();
+      clip
+        .roundRect(
+          -defaultCardW / 2,
+          -defaultCardH / 2,
+          defaultCardW,
+          defaultCardH,
+          corner
+        )
+        .fill(0xffffff);
+
+      view.addChild(clip);
+      view.mask = clip;
+
+      const entity: SpriteEntity = {
+        body,
+        cardId,
+        view,
+        front,
+        back,
+        clip,
+        isFaceUp: false,
+        reversed,
+        slotKey,
+        zoomState: "normal",
+      };
+      // 🔖 Add a label under each card to show the spread position (e.g., Past / Present / Future)
+      try {
+        const slotDef = spread.slots.find(sl => sl.idKey === slotKey);
+        const labelText = slotDef?.cardLabel || slotKey
+          .replace(/-/g, ' ') // friendlier for e.g. 'past-present-future'
+          .toLowerCase();
+        const label = new PIXI.Text({
+          text: labelText,
+          style: new PIXI.TextStyle({
+            fontFamily: 'Poppins, ui-sans-serif, system-ui, -apple-system',
+            fontSize: 14,
+            fill: 0xffffff,
+            stroke: 0x000000,
+            strokeThickness: 3,
+            align: 'center',
+            dropShadow: true,
+            dropShadowColor: 0x000000,
+            dropShadowBlur: 2,
+            dropShadowDistance: 1,
+          }),
+        });
+        // position label below the card
+        label.anchor.set(0.5, 0);
+        label.x = targets[i].x;
+        label.y = targets[i].y + (defaultCardH / 2) + 8;
+        label.rotation = 0;
+        // ensure label is on top of the card sprites
+        labelLayerRef.current?.addChild(label);
+        // store reference for future scaling with profile
+        (view as any).__label = label;
+      } catch (e) {
+        console.warn('[Tarot] Could not attach label', e);
+      }
+
+
+      // ✅ Pre-size for the active interface profile so there’s no flash on mobile
+      const activeProfile =
+        profileRef.current ?? pickProfile(pixiApp.screen.width);
+      const pre = preScaleEntityForProfile(
+        pixiApp,
+        entity,
+        activeProfile,
+        defaultCardW
+      );
+      
+      // Cache the base scale (used when unzooming)
+      if (i === 0) baseCardScaleRef.current = pre;
+
+      spritesRef.current.push(entity);
+
+// 🔖 Create label for this slot on the labelLayer
+const slotDef = spread.slots.find(sl => sl.idKey === slotKey);
+if (slotDef) {
+  const labelText = slotDef.cardLabel || slotDef.idKey.replace(/-/g, ' ').toLowerCase();
+  const label = new PIXI.Text({
+    text: labelText,
+    style: new PIXI.TextStyle({
+      fontFamily: 'Poppins, ui-sans-serif, system-ui, -apple-system',
+      fontSize: 14,
+      fill: 0xffffff,
+      align: 'center',
+    }),
+  });
+  label.anchor.set(0.5, 0);
+  // temp position; will be updated after tween
+  label.x = spawnX;
+  label.y = spawnY + defaultCardH/2 + 8;
+  labelLayer.addChild(label);
+  (entity as any).__label = label;
+}
+
+      view.on("pointerdown", (e) => {
+        e.stopPropagation();
+        if (!interactions.current) return;
+        interactions.current.handleCardClick(entity);
+      });
+    }
+
+    // Calculate targets
+    const W = pixiApp.renderer.width;
+    const H = pixiApp.renderer.height;
+
+    let targets: Target[] = [];
+    if (spread.id === "horoscope-12") {
+      // Keep the special 6+6 (desktop/tablet) and 3×4 (mobile) logic
+      targets = computeHoroscopeTargets(pixiApp);
+    } else {
+      // Honor the coordinates you hardcoded in spreads.ts
+      targets = spread.slots.map((s: any) => ({
+        x: (s.xPerc / 100) * W,
+        y: (s.yPerc / 100) * H,
+        angle: s.angle ?? 0,
+      }));
+    }
+
+    // Tablet-only extra vertical spacing for 5-card
+    const activeProfile =
+      profileRef.current ?? pickProfile(pixiApp.screen.width);
+    targets = applyLayoutOverrides(
+      activeProfile,
+      spread,
+      targets,
+      pixiApp,
+      /* rowGapVH */ 0.05
+    );
+
+    // Animate cards to positions
+    for (let i = 0; i < spritesRef.current.length; i++) {
+      const entity = spritesRef.current[i];
+      const target = targets[i];
+      await tweenCardToTarget(entity, target, 650);
+    }
+
+    const profile =
+      profileRef.current ?? pickProfile(appRef.current!.screen.width);
     recomputeAndApplyBaseScaleWithProfile(
       appRef,
       spritesRef,
@@ -426,7 +730,51 @@ export default function TarotCanvas() {
       baseCardScaleRef,
       profile
     );
+
+    // Update labels after profile scaling
+    
+
+    setDealing(false);
   }
+
+  // Tween helper
+  const tweenCardToTarget = (entity: SpriteEntity, target: Target, ms = 700) =>
+    new Promise<void>((resolve) => {
+      const body = entity.body;
+      const start = performance.now();
+      const sx = body.position.x;
+      const sy = body.position.y;
+      const sa = body.angle;
+      const ta = target.angle ?? sa;
+
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        Body.setPosition(body, {
+          x: sx + (target.x - sx) * ease,
+          y: sy + (target.y - sy) * ease,
+        });
+        Body.setAngle(body, sa + (ta - sa) * ease);
+
+// keep label tracking this entity's body position
+const lbl = (entity as any).__label as PIXI.Text | undefined;
+if (lbl) {
+  lbl.x = body.position.x;
+  lbl.y = body.position.y + (entity.front.height/2) + 8;
+}
+
+        if (t < 1) requestAnimationFrame(step);
+        else {
+          Body.setVelocity(body, { x: 0, y: 0 });
+          Body.setAngularVelocity(body, 0);
+          Body.setStatic(body, true);
+          const lbl = (entity as any).__label as PIXI.Text | undefined;
+          if (lbl) { lbl.x = body.position.x; lbl.y = body.position.y + (entity.front.height/2) + 8; }
+          resolve();
+        }
+      };
+      requestAnimationFrame(step);
+    });
 
   // Global click handler
   useEffect(() => {
@@ -505,7 +853,7 @@ export default function TarotCanvas() {
   function saveCurrentReading() {
     if (!seed) return;
 
-    const selectedQ = QUESTIONS.find((q) => q.label === focusText);
+    const selectedQ = QUESTIONS.find((q) => q.label === focusText); // <- use spread prompt
     let safeChoice1 = choice1Text;
     let safeChoice2 = choice2Text;
 
@@ -525,8 +873,10 @@ export default function TarotCanvas() {
       spreadId: spread.id,
       seed,
       colorway,
+      // 'question' remains the user's personal intention
       question,
       meta: {
+        // focus = the chosen A/B prompt
         focus: focusText || selectedQ?.label || undefined,
         choice1: safeChoice1 || undefined,
         choice2: safeChoice2 || undefined,
@@ -553,6 +903,7 @@ export default function TarotCanvas() {
       const first = QUESTIONS.find((q) => q.category === selectedCategory);
       if (first) {
         setFocusText(first.label);
+        updateSpreadsForQuestion(first.label);
         setChoice1Text(first.requiresSubDropdown ? "" : first.pathA);
         setChoice2Text(first.requiresSubDropdown ? "" : first.pathB);
       }
@@ -564,9 +915,9 @@ export default function TarotCanvas() {
   // For Pros & Cons, mirror the selected A/B prompt (focusText) and update live.
   useEffect(() => {
     if (spread.id === "path-a-vs-b") {
-      setQuestion(focusText || "");
+      setQuestion(focusText || ""); // dynamically follows Category/Question changes
     } else {
-      setQuestion("");
+      setQuestion(""); // force blank for every other spread
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spread.id, focusText]);
@@ -611,9 +962,6 @@ export default function TarotCanvas() {
           disabled={
             // Optional: block pull until A/B chosen for the special case
             (() => {
-              if (!initialized) {
-                return true; // block until PIXI/Matter fully initialized
-              }
               if (spread.id !== "path-a-vs-b") return dealing;
               const sel = QUESTIONS.find((q) => q.label === focusText);
               const needsAB = !!sel?.requiresSubDropdown;
@@ -650,7 +998,9 @@ export default function TarotCanvas() {
                   setSelectedCategory(cat);
                   const first = QUESTIONS.find((q) => q.category === cat);
                   if (first) {
+                    // Always set the spread focus + A/B from the question
                     setFocusText(first.label);
+                    updateSpreadsForQuestion(first.label);
                     setChoice1Text(
                       first.requiresSubDropdown ? "" : first.pathA
                     );
@@ -675,13 +1025,14 @@ export default function TarotCanvas() {
               <select
                 id="qa-question"
                 className="w-full px-3 py-2 rounded-xl border"
-                value={focusText || ""}
+                value={focusText || ""} // <- tie to focusText (the spread prompt)
                 onChange={(e) => {
                   const selected = QUESTIONS.find(
                     (q) => q.label === e.target.value
                   );
                   if (selected) {
                     setFocusText(selected.label);
+                    updateSpreadsForQuestion(selected.label);
                     setChoice1Text(
                       selected.requiresSubDropdown ? "" : selected.pathA
                     );
@@ -758,7 +1109,7 @@ export default function TarotCanvas() {
               );
             }
 
-            // Default: read-only A/B labels
+            // Default: read-only A/B labels (no free text)
             const selDefault = QUESTIONS.find((q) => q.label === focusText);
             return (
               <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
