@@ -1,9 +1,6 @@
 import * as PIXI from "pixi.js";
 import { Body } from "matter-js";
 
-// percent units, relative to canvas
-export type Win = { x: number; y: number; w: number; h: number };
-
 export type SpriteEntity = {
   body: Body;
   cardId: string;

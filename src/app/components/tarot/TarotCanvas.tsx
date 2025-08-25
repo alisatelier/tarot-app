@@ -33,7 +33,6 @@ import {
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
 // Types
-type Win = { x: number; y: number; w: number; h: number };
 type Target = { x: number; y: number; angle?: number };
 type SpriteEntity = {
   body: any;
@@ -48,26 +47,7 @@ type SpriteEntity = {
   zoomState: "normal" | "zoomed";
 };
 
-// Constants
-const WINDOWS_5: Win[] = [
-  { x: 18, y: 18, w: 14, h: 26 },
-  { x: 43, y: 18, w: 14, h: 26 },
-  { x: 68, y: 18, w: 14, h: 26 },
-  { x: 30, y: 54, w: 14, h: 26 },
-  { x: 56, y: 54, w: 14, h: 26 },
-];
-
-const WINDOWS_3: Win[] = [
-  { x: 43, y: 20, w: 14, h: 26 },
-  { x: 20, y: 55, w: 14, h: 26 },
-  { x: 66, y: 55, w: 14, h: 26 },
-];
-
-function windowCenterTarget(win: Win, W: number, H: number) {
-  const cx = ((win.x + win.w / 2) / 100) * W;
-  const cy = ((win.y + win.h / 2) / 100) * H;
-  return { x: cx, y: cy, angle: 0 };
-}
+// Constants - removed unused WINDOWS_5, WINDOWS_3, and windowCenterTarget
 
 function bgPath(colorway: "pink" | "grey", w: number, h: number) {
   const variant = w >= h ? "Desktop" : "Mobile";
