@@ -66,7 +66,7 @@ export const spreads: SpreadDef[] = [
   },
   {
     id: "path-a-vs-b",
-    label: "Pros & Cons of Two Choices",
+    label: "This or That With Pros and Cons",
     // Desktop/Tablet default: focus top, A cluster bottom-left, B cluster bottom-right
     slots: [
       { key: "focus", xPerc: 50, yPerc: 30 },

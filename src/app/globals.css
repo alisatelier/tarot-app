@@ -173,34 +173,17 @@ body {
   .tarot-canvas-background.pink {
     background-image: url('/cards/canvas/Pink-Mobile.png');
   }
-  .tarot-canvas-background.green {
-    background-image: url('/cards/canvas/Green-Mobile.png');
+  .tarot-canvas-background.grey {
+    background-image: url('/cards/canvas/Grey-Mobile.png');
   }
-  .tarot-canvas-background.blue {
-    background-image: url('/cards/canvas/Blue-Mobile.png');
-  }
-}
 
-@media (min-width: 521px) and (max-width: 960px) {
-  .tarot-canvas-background.pink {
-    background-image: url('/cards/canvas/Pink-Tablet.png');
-  }
-  .tarot-canvas-background.green {
-    background-image: url('/cards/canvas/Green-Tablet.png');
-  }
-  .tarot-canvas-background.blue {
-    background-image: url('/cards/canvas/Blue-Tablet.png');
-  }
 }
 
 @media (min-width: 961px) {
   .tarot-canvas-background.pink {
     background-image: url('/cards/canvas/Pink-Desktop.png');
   }
-  .tarot-canvas-background.green {
-    background-image: url('/cards/canvas/Green-Desktop.png');
-  }
-  .tarot-canvas-background.blue {
-    background-image: url('/cards/canvas/Blue-Desktop.png');
+  .tarot-canvas-background.grey {
+    background-image: url('/cards/canvas/Grey-Desktop.png');
   }
 }

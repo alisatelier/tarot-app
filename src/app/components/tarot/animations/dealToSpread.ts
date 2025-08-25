@@ -1,0 +1,307 @@
+import * as PIXI from "pixi.js";
+import Matter from "matter-js";
+import { pickCardsDeterministic, getSeed, type CardPick } from "../utils/cardPicking";
+import { ALL_CARD_IDS } from "../useTarotStore";
+import { frontSrcFor, backSrcFor, type Colorway } from "../../../../lib/tarot/cards";
+import { computeSpawnPoint } from "../interfaces/deal.spawn";
+import { preScaleEntityForProfile } from "../ResponsiveSizing";
+import { type SpriteEntity, type Target, tweenCardToTarget } from "./cardTween";
+import { computeHoroscopeTargets } from "../layouts/horoscope";
+import { applyLayoutOverrides } from "../interfaces/layout.overrides";
+import { pickProfile } from "../interfaces/profile.registry";
+
+const { Bodies, Composite } = Matter;
+
+// Types for spread and assignment
+export interface SpreadSlot {
+  key: string;
+  xPerc: number;
+  yPerc: number;
+  angle?: number;
+}
+
+export interface Spread {
+  id: string;
+  slots: SpreadSlot[];
+}
+
+export interface CardAssignment {
+  slotKey: string;
+  cardId: string;
+  reversed: boolean;
+}
+
+export interface DealToSpreadParams {
+  // Core refs
+  appRef: React.MutableRefObject<PIXI.Application | null>;
+  engineRef: React.MutableRefObject<any | null>; // Matter.Engine
+  spritesRef: React.MutableRefObject<SpriteEntity[]>;
+  profileRef: React.MutableRefObject<any | null>; // TarotInterfaceProfile
+  baseCardScaleRef: React.MutableRefObject<number>;
+  currentZoomedCardRef: React.MutableRefObject<SpriteEntity | null>;
+  hoverAnimRef: React.MutableRefObject<Map<SpriteEntity, number>>;
+  
+  // Background refs
+  bgRef: React.MutableRefObject<PIXI.Sprite | null>;
+  gradientRef: React.MutableRefObject<PIXI.Graphics | null>;
+  usingGradientRef: React.MutableRefObject<boolean>;
+  gradientFromRef: React.MutableRefObject<number>;
+  gradientToRef: React.MutableRefObject<number>;
+  
+  // Current spread and state
+  spread: Spread;
+  colorway: Colorway;
+  
+  // State setters
+  setDealing: (dealing: boolean) => void;
+  setSeed: (seed: string) => void;
+  setAssignments: (assignments: CardAssignment[]) => void;
+  
+  // Interactions
+  interactions: React.MutableRefObject<any | null>; // CardInteractions
+  
+  // Background drawing function
+  drawGradientBg: (
+    app: PIXI.Application,
+    from: number,
+    to: number,
+    ref: React.MutableRefObject<PIXI.Graphics | null>
+  ) => void;
+}
+
+/**
+ * Modular function to deal cards to a spread
+ * Handles all the logic for creating, positioning, and animating cards
+ */
+export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
+  const {
+    appRef,
+    engineRef,
+    spritesRef,
+    profileRef,
+    baseCardScaleRef,
+    currentZoomedCardRef,
+    hoverAnimRef,
+    bgRef,
+    gradientRef,
+    usingGradientRef,
+    gradientFromRef,
+    gradientToRef,
+    spread,
+    colorway,
+    setDealing,
+    setSeed,
+    setAssignments,
+    interactions,
+    drawGradientBg,
+  } = params;
+
+  // Validation
+  if (!appRef.current || !engineRef.current) return;
+  if (ALL_CARD_IDS.length === 0) {
+    console.error("[Tarot] No cards found.");
+    alert("No cards found. Please add cards to your deck.");
+    return;
+  }
+
+  // Setup background
+  usingGradientRef.current = true;
+  gradientFromRef.current = 0x000000;
+  gradientToRef.current = 0x535b73;
+
+  const pixiApp = appRef.current;
+
+  // Remove existing background
+  if (bgRef.current) {
+    pixiApp.stage.removeChild(bgRef.current);
+    bgRef.current.destroy(true);
+    bgRef.current = null;
+  }
+  
+  drawGradientBg(
+    pixiApp,
+    gradientFromRef.current,
+    gradientToRef.current,
+    gradientRef
+  );
+
+  setDealing(true);
+  currentZoomedCardRef.current = null;
+
+  // Clean up previous cards
+  for (const sprite of spritesRef.current) {
+    const cancel = hoverAnimRef.current.get(sprite);
+    if (cancel) cancelAnimationFrame(cancel);
+    hoverAnimRef.current.delete(sprite);
+
+    sprite.view.mask = null;
+    sprite.view.destroy({ children: true });
+    Composite.remove(engineRef.current.world, sprite.body);
+  }
+  spritesRef.current = [];
+
+  // Generate new card assignments
+  const seedStr = getSeed();
+  setSeed(seedStr);
+  const picks = pickCardsDeterministic(seedStr, spread.slots.length);
+
+  const newAssignments: CardAssignment[] = picks.map((p: CardPick, i: number) => ({
+    slotKey: spread.slots[i].key,
+    cardId: p.id,
+    reversed: p.reversed,
+  }));
+  setAssignments(newAssignments);
+
+  // Preload textures
+  const urlsToLoad = [
+    backSrcFor(colorway),
+    ...newAssignments.map((a) => frontSrcFor(a.cardId, colorway)),
+  ];
+  await PIXI.Assets.load(urlsToLoad);
+
+  // Create cards
+  const defaultCardW = 200;
+  const defaultCardH = 300;
+
+  // Compute spawn point
+  const { x: spawnX, y: spawnY } = computeSpawnPoint(
+    pixiApp,
+    defaultCardH,
+    0.9
+  );
+
+  // Create sprite entities
+  for (let i = 0; i < spread.slots.length; i++) {
+    const { slotKey, cardId, reversed } = newAssignments[i];
+
+    // Create physics body
+    const body = Bodies.rectangle(
+      spawnX,
+      spawnY,
+      defaultCardW,
+      defaultCardH,
+      {
+        frictionAir: 0.16,
+        isSensor: true,
+        collisionFilter: { group: -1, category: 0, mask: 0 },
+      }
+    );
+    Composite.add(engineRef.current.world, body);
+
+    // Create PIXI container and sprites
+    const corner = Math.min(defaultCardW, defaultCardH) * 0.12;
+    const view = new PIXI.Container();
+    view.zIndex = 100 + i * 3;
+    view.eventMode = "static";
+    view.cursor = "pointer";
+    pixiApp.stage.addChild(view);
+    view.position.set(spawnX, spawnY);
+
+    // Create front and back textures
+    const frontTex = PIXI.Texture.from(frontSrcFor(cardId, colorway));
+    frontTex.source.scaleMode = "linear";
+    const backTex = PIXI.Texture.from(backSrcFor(colorway));
+    backTex.source.scaleMode = "linear";
+
+    const front = new PIXI.Sprite(frontTex);
+    const back = new PIXI.Sprite(backTex);
+
+    // Configure sprites
+    front.anchor.set(0.5);
+    back.anchor.set(0.5);
+    front.width = defaultCardW;
+    front.height = defaultCardH;
+    back.width = defaultCardW;
+    back.height = defaultCardH;
+
+    view.addChild(front);
+    view.addChild(back);
+
+    front.visible = false;
+    back.visible = true;
+
+    // Create rounded mask
+    const clip = new PIXI.Graphics();
+    clip
+      .roundRect(
+        -defaultCardW / 2,
+        -defaultCardH / 2,
+        defaultCardW,
+        defaultCardH,
+        corner
+      )
+      .fill(0xffffff);
+
+    view.addChild(clip);
+    view.mask = clip;
+
+    // Create entity
+    const entity: SpriteEntity = {
+      body,
+      cardId,
+      view,
+      front,
+      back,
+      clip,
+      isFaceUp: false,
+      reversed,
+      slotKey,
+      zoomState: "normal",
+    };
+
+    // Pre-scale for the active profile
+    const activeProfile = profileRef.current ?? pickProfile(pixiApp.screen.width);
+    const preScale = preScaleEntityForProfile(
+      pixiApp,
+      entity,
+      activeProfile,
+      defaultCardW
+    );
+    
+    // Cache base scale from first card
+    if (i === 0) baseCardScaleRef.current = preScale;
+
+    spritesRef.current.push(entity);
+
+    // Add click handler
+    view.on("pointerdown", (e) => {
+      e.stopPropagation();
+      if (!interactions.current) return;
+      interactions.current.handleCardClick(entity);
+    });
+  }
+
+  // Calculate target positions
+  const W = pixiApp.renderer.width;
+  const H = pixiApp.renderer.height;
+
+  let targets: Target[] = [];
+  if (spread.id === "horoscope-12") {
+    targets = computeHoroscopeTargets(pixiApp);
+  } else {
+    targets = spread.slots.map((slot) => ({
+      x: (slot.xPerc / 100) * W,
+      y: (slot.yPerc / 100) * H,
+      angle: slot.angle ?? 0,
+    }));
+  }
+
+  // Apply layout overrides for different screen sizes
+  const activeProfile = profileRef.current ?? pickProfile(pixiApp.screen.width);
+  targets = applyLayoutOverrides(
+    activeProfile,
+    spread,
+    targets,
+    pixiApp,
+    0.05 // rowGapVH
+  );
+
+  // Animate cards to their positions
+  for (let i = 0; i < spritesRef.current.length; i++) {
+    const entity = spritesRef.current[i];
+    const target = targets[i];
+    await tweenCardToTarget(entity, target, 650);
+  }
+
+  setDealing(false);
+}
