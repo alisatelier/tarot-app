@@ -48,7 +48,7 @@ export const QUESTIONS: QuestionItem[] = [
   // 💕 Relationships
   { id: "rel-stay-or-leave", category: "relationships", label: "Should I stay in this relationship or leave?", pathA: "Staying", pathB: "Leaving" },
   { id: "rel-reconcile-or-moveon", category: "relationships", label: "Is it better to reconcile or move on?", pathA: "Reconciling", pathB: "Moving On" },
-  { id: "rel-openup-or-boundaries", category: "relationships", label: "Should I open up more or set stronger boundaries?", pathA: "Opening Up More", pathB: "Setting Stronger Boundaries" },
+  { id: "rel-openup-or-boundaries", category: "relationships", label: "Should I open up more or set stronger boundaries?", pathA: "Opening Up", pathB: "Stronger Boundaries" },
   { id: "rel-fling-or-longterm", category: "relationships", label: "Should I treat this connection as a fling or something long-term?", pathA: "Fling", pathB: "Long-Term" },
   { id: "rel-partner-needs-or-own-growth", category: "relationships", label: "Do I focus on my partner’s needs or my own growth first?", pathA: "My Partner’s Needs", pathB: "My Own Growth" },
 

@@ -1,8 +1,17 @@
 import * as PIXI from "pixi.js";
 import Matter from "matter-js";
-import { pickCardsDeterministic, getSeed, type CardPick } from "../utils/cardPicking";
+import type React from "react";
+import {
+  pickCardsDeterministic,
+  getSeed,
+  type CardPick,
+} from "../utils/cardPicking";
 import { ALL_CARD_IDS } from "../useTarotStore";
-import { frontSrcFor, backSrcFor, type Colorway } from "../../../../lib/tarot/cards";
+import {
+  frontSrcFor,
+  backSrcFor,
+  type Colorway,
+} from "../../../../lib/tarot/cards";
 import { computeSpawnPoint } from "../interfaces/deal.spawn";
 import { preScaleEntityForProfile } from "../ResponsiveSizing";
 import { type SpriteEntity, type Target, tweenCardToTarget } from "./cardTween";
@@ -14,10 +23,11 @@ const { Bodies, Composite } = Matter;
 
 // Types for spread and assignment
 export interface SpreadSlot {
-  key: string;
+  idKey: string;
   xPerc: number;
   yPerc: number;
   angle?: number;
+  cardLabel?: string;
 }
 
 export interface Spread {
@@ -40,33 +50,64 @@ export interface DealToSpreadParams {
   baseCardScaleRef: React.MutableRefObject<number>;
   currentZoomedCardRef: React.MutableRefObject<SpriteEntity | null>;
   hoverAnimRef: React.MutableRefObject<Map<SpriteEntity, number>>;
-  
+
   // Background refs
   bgRef: React.MutableRefObject<PIXI.Sprite | null>;
-  gradientRef: React.MutableRefObject<PIXI.Graphics | null>;
+  gradientRef: React.MutableRefObject<PIXI.Sprite | null>;
   usingGradientRef: React.MutableRefObject<boolean>;
   gradientFromRef: React.MutableRefObject<number>;
   gradientToRef: React.MutableRefObject<number>;
-  
+
   // Current spread and state
   spread: Spread;
   colorway: Colorway;
-  
+
   // State setters
   setDealing: (dealing: boolean) => void;
   setSeed: (seed: string) => void;
   setAssignments: (assignments: CardAssignment[]) => void;
-  
+
   // Interactions
   interactions: React.MutableRefObject<any | null>; // CardInteractions
-  
+
   // Background drawing function
   drawGradientBg: (
     app: PIXI.Application,
     from: number,
     to: number,
-    ref: React.MutableRefObject<PIXI.Graphics | null>
+    ref: React.MutableRefObject<PIXI.Sprite | null> // match TarotCanvas
   ) => void;
+}
+
+function ensureLabelLayer(app: PIXI.Application): PIXI.Container {
+  // Reuse one layer across deals; attach to stage to avoid prop-drilling
+  const stageAny = app.stage as any;
+  if (!stageAny.__labelLayer) {
+    const layer = new PIXI.Container();
+    layer.zIndex = 9999; // above cards
+    app.stage.addChild(layer);
+    stageAny.__labelLayer = layer;
+  } else if (!stageAny.__labelLayer.parent) {
+    // if it was removed by cleanup, add back
+    app.stage.addChild(stageAny.__labelLayer);
+  }
+  return stageAny.__labelLayer as PIXI.Container;
+}
+
+function humanizeSlotKey(idKey: string) {
+  return idKey.replace(/-/g, " ").toLowerCase();
+}
+
+function makeLabel(text: string) {
+  return new PIXI.Text({
+    text,
+    style: new PIXI.TextStyle({
+      fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
+      fontSize: 14,
+      fill: 0xffffff,
+      align: "center",
+    }),
+  });
 }
 
 /**
@@ -111,13 +152,17 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
 
   const pixiApp = appRef.current;
 
+  // Prepare / clear the label layer for this deal
+  const labelLayer = ensureLabelLayer(pixiApp);
+  labelLayer.removeChildren(); // remove previous labels
+
   // Remove existing background
   if (bgRef.current) {
     pixiApp.stage.removeChild(bgRef.current);
     bgRef.current.destroy(true);
     bgRef.current = null;
   }
-  
+
   drawGradientBg(
     pixiApp,
     gradientFromRef.current,
@@ -145,11 +190,13 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   setSeed(seedStr);
   const picks = pickCardsDeterministic(seedStr, spread.slots.length);
 
-  const newAssignments: CardAssignment[] = picks.map((p: CardPick, i: number) => ({
-    slotKey: spread.slots[i].key,
-    cardId: p.id,
-    reversed: p.reversed,
-  }));
+  const newAssignments: CardAssignment[] = picks.map(
+    (p: CardPick, i: number) => ({
+      slotKey: spread.slots[i].idKey,
+      cardId: p.id,
+      reversed: p.reversed,
+    })
+  );
   setAssignments(newAssignments);
 
   // Preload textures
@@ -175,17 +222,11 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     const { slotKey, cardId, reversed } = newAssignments[i];
 
     // Create physics body
-    const body = Bodies.rectangle(
-      spawnX,
-      spawnY,
-      defaultCardW,
-      defaultCardH,
-      {
-        frictionAir: 0.16,
-        isSensor: true,
-        collisionFilter: { group: -1, category: 0, mask: 0 },
-      }
-    );
+    const body = Bodies.rectangle(spawnX, spawnY, defaultCardW, defaultCardH, {
+      frictionAir: 0.16,
+      isSensor: true,
+      collisionFilter: { group: -1, category: 0, mask: 0 },
+    });
     Composite.add(engineRef.current.world, body);
 
     // Create PIXI container and sprites
@@ -250,18 +291,43 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     };
 
     // Pre-scale for the active profile
-    const activeProfile = profileRef.current ?? pickProfile(pixiApp.screen.width);
+    const activeProfile =
+      profileRef.current ?? pickProfile(pixiApp.screen.width);
     const preScale = preScaleEntityForProfile(
       pixiApp,
       entity,
       activeProfile,
       defaultCardW
     );
-    
+
     // Cache base scale from first card
     if (i === 0) baseCardScaleRef.current = preScale;
 
     spritesRef.current.push(entity);
+
+    // Create the label for this slot (text only, position set after animation)
+    // AFTER spritesRef.current.push(entity);
+    const slotMeta = spread.slots.find((s) => s.idKey === slotKey);
+    const labelText =
+      slotMeta?.cardLabel ?? slotKey.replace(/-/g, " ").toLowerCase();
+    const label = new PIXI.Text({
+      text: labelText,
+      style: new PIXI.TextStyle({
+        fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
+        fontSize: 14,
+        fill: 0xffffff,
+
+        align: "center",
+      }),
+    });
+    label.anchor.set(0.5, 0);
+    label.alpha = 0; // we'll fade this in during the tween
+    labelLayer.addChild(label);
+    (entity as any).__label = label;
+
+    // keep a reference for later positioning
+    // (typed as any to avoid changing SpriteEntity type)
+    (entity as any).__label = label;
 
     // Add click handler
     view.on("pointerdown", (e) => {
@@ -300,7 +366,49 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   for (let i = 0; i < spritesRef.current.length; i++) {
     const entity = spritesRef.current[i];
     const target = targets[i];
-    await tweenCardToTarget(entity, target, 650);
+    await tweenCardToTarget(entity, target, {
+      ms: 650,
+      onBegin: (e) => {
+        const lbl = (e as any).__label as PIXI.Text | undefined;
+        if (lbl) lbl.alpha = 0; // start hidden
+      },
+      onUpdate: (e, t) => {
+        const lbl = (e as any).__label as PIXI.Text | undefined;
+        if (!lbl) return;
+        const { x, y } = e.body.position;
+        lbl.x = x;
+        lbl.y = y + e.front.height / 2 + 8;
+        lbl.rotation = 0;
+
+        // fade in after the card has moved a little (nice feel)
+        if (t >= 0.15 && lbl.alpha < 1) {
+          // simple eased fade-in between 0.15 → 0.35 progress
+          const p = Math.min(1, (t - 0.15) / 0.2);
+          lbl.alpha = p;
+        }
+      },
+      onComplete: (e) => {
+        const lbl = (e as any).__label as PIXI.Text | undefined;
+        if (lbl) {
+          lbl.alpha = 1;
+          // one last snap in case of rounding
+          const { x, y } = e.body.position;
+          lbl.x = x;
+          lbl.y = y + e.front.height / 2 + 8;
+        }
+      },
+    });
+  }
+
+  // Position labels under their cards now that bodies are at rest
+  for (const entity of spritesRef.current) {
+    const lbl = (entity as any).__label as PIXI.Text | undefined;
+    if (!lbl) continue;
+    const { x, y } = entity.body.position;
+    lbl.x = x;
+    lbl.y = y + entity.front.height / 2 + 8;
+    lbl.rotation = 0;
+    lbl.alpha = 1; // reveal
   }
 
   setDealing(false);

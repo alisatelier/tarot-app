@@ -59,9 +59,9 @@ export const spreads: SpreadDef[] = [
     slots: [
       { idKey: "goal-5", cardLabel: "My Goal", xPerc: 16, yPerc: 50 },
       { idKey: "current-5", cardLabel: "Current Status", xPerc: 33, yPerc: 50 },
-      { idKey: "block-5", cardLabel: "What is Blocking My Goal", xPerc: 50, yPerc: 50 },
-      { idKey: "bridge-5", cardLabel: "What I Need to Bridge the Gap", xPerc: 67, yPerc: 50 },
-      { idKey: "lesson-5", cardLabel: "What Lesson There is to Learn", xPerc: 84, yPerc: 50 },
+      { idKey: "block-5", cardLabel: "Goal is Blocked By", xPerc: 50, yPerc: 50 },
+      { idKey: "bridge-5", cardLabel: "Bridging The Gap", xPerc: 67, yPerc: 50 },
+      { idKey: "lesson-5", cardLabel: "Lessons Learned", xPerc: 84, yPerc: 50 },
     ]
   },
 ];
@@ -74,10 +74,10 @@ export function pathAVsBSpreadDef(pathA: string = "Path A", pathB: string = "Pat
     // Desktop/Tablet default: focus top, A cluster bottom-left, B cluster bottom-right
     slots: [
       { idKey: "focus-5", cardLabel: "Focus", xPerc: 50, yPerc: 30 },
-      { idKey: "prosA-5", cardLabel: `Pros of\n${pathA}`, xPerc: 20, yPerc: 65 },
-      { idKey: "consA-5", cardLabel: `Cons of\n${pathA}`, xPerc: 35, yPerc: 65 },
-      { idKey: "prosB-5", cardLabel: `Pros of\n${pathB}`, xPerc: 65, yPerc: 65 },
-      { idKey: "consB-5", cardLabel: `Cons of\n${pathB}`, xPerc: 80, yPerc: 65 },
+      { idKey: "prosA-5", cardLabel: `Pros:\n${pathA}`, xPerc: 20, yPerc: 65 },
+      { idKey: "consA-5", cardLabel: `Cons:\n${pathA}`, xPerc: 35, yPerc: 65 },
+      { idKey: "prosB-5", cardLabel: `Pros:\n${pathB}`, xPerc: 65, yPerc: 65 },
+      { idKey: "consB-5", cardLabel: `Cons:\n${pathB}`, xPerc: 80, yPerc: 65 },
     ],
   };
 }

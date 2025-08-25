@@ -1,36 +1,30 @@
+// cardTween.ts
 import Matter from "matter-js";
-
 const { Body } = Matter;
 
-// Types
-export type Target = { x: number; y: number; angle?: number };
+export type TweenOptions = {
+  ms?: number;
+  ease?: (t: number) => number;
+  onBegin?: (entity: SpriteEntity) => void;
+  onUpdate?: (entity: SpriteEntity, t: number) => void;     // 0..1
+  onComplete?: (entity: SpriteEntity) => void;
+};
 
-export interface SpriteEntity {
-  body: any; // Matter.Body
-  cardId: string;
-  view: any; // PIXI.Container
-  front: any; // PIXI.Sprite
-  back: any; // PIXI.Sprite
-  clip: any; // PIXI.Graphics
-  isFaceUp: boolean;
-  reversed: boolean;
-  slotKey: string;
-  zoomState: "normal" | "zoomed";
-}
-
-/**
- * Smoothly animates a card from its current position to a target position
- * @param entity The sprite entity to animate
- * @param target The target position and rotation
- * @param ms Animation duration in milliseconds
- * @returns Promise that resolves when animation completes
- */
+// Keep your existing exports/imports...
 export const tweenCardToTarget = (
   entity: SpriteEntity,
   target: Target,
-  ms = 700
-): Promise<void> =>
+  msOrOpts: number | TweenOptions = 700
+) =>
   new Promise<void>((resolve) => {
+    const opts: TweenOptions =
+      typeof msOrOpts === "number" ? { ms: msOrOpts } : msOrOpts;
+
+    const ms = opts.ms ?? 700;
+    const ease =
+      opts.ease ??
+      ((t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t));
+
     const body = entity.body;
     const start = performance.now();
     const sx = body.position.x;
@@ -38,27 +32,29 @@ export const tweenCardToTarget = (
     const sa = body.angle;
     const ta = target.angle ?? sa;
 
+    opts.onBegin?.(entity);
+
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / ms);
-      // Ease-in-out cubic animation
-      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      
+      const k = ease(t);
+
       Body.setPosition(body, {
-        x: sx + (target.x - sx) * ease,
-        y: sy + (target.y - sy) * ease,
+        x: sx + (target.x - sx) * k,
+        y: sy + (target.y - sy) * k,
       });
-      Body.setAngle(body, sa + (ta - sa) * ease);
+      Body.setAngle(body, sa + (ta - sa) * k);
+
+      opts.onUpdate?.(entity, t);
 
       if (t < 1) {
         requestAnimationFrame(step);
       } else {
-        // Stop all movement when animation completes
         Body.setVelocity(body, { x: 0, y: 0 });
         Body.setAngularVelocity(body, 0);
         Body.setStatic(body, true);
+        opts.onComplete?.(entity);
         resolve();
       }
     };
-    
     requestAnimationFrame(step);
   });
