@@ -13,3 +13,6 @@ Quick running notes of what was happening at each commit or push.
 - Deleted questions.ts as no code was referenced in new working version.
 - removed humanizeSlotKey() and makeLabel() from dealToSpread.ts
 - Cleaned up hanldeGlobalClick from CardInteractions.ts
+- Next Goal: New free-text intention field.
+
+## 2025-08-26 0441– Code Clean Up
