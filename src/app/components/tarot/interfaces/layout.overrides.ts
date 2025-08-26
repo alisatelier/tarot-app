@@ -1,10 +1,9 @@
 import type * as PIXI from "pixi.js";
 import type { TarotInterfaceProfile } from "./types";
+import type { Spread } from "../../../../lib/tarot/spreads";
 
 // Reuse the same shape TarotCanvas uses for layout targets
 export type Target = { x: number; y: number; angle?: number };
-
-type SpreadLite = { id: string; slots: unknown[] };
 
 /**
  * Tablet-only spacing bump for 5-card spread.
@@ -12,7 +11,7 @@ type SpreadLite = { id: string; slots: unknown[] };
  */
 export function applyLayoutOverrides(
   profile: TarotInterfaceProfile,
-  spread: SpreadLite,
+  spread: Spread,
   targets: Target[],
   app: PIXI.Application,
   rowGapVH = 0.05
@@ -42,8 +41,11 @@ export function applyLayoutOverrides(
       consB: { x: W * 0.7, y: H * 0.78 },
     } as Record<string, { x: number; y: number }>;
 
+    // Get profile-specific slots for proper key mapping
+    const profileSlots = profile.getSlotsForSpread(spread);
+
     return targets.map((t, i) => {
-      const key = (spread.slots[i] as any).key;
+      const key = profileSlots[i]?.idKey;
       const m = map[key];
       return m ? { ...t, x: m.x, y: m.y } : t;
     });

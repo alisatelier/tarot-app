@@ -1,5 +1,6 @@
 import * as PIXI from "pixi.js";
 import type { SpriteEntity } from "../utils/types";
+import type { Spread } from "../../../../lib/tarot/spreads";
 
 // Structural ref so we don't import React types here
 export type RefLike<T> = { current: T };
@@ -18,6 +19,9 @@ export interface TarotInterfaceProfile {
 
   /** compute absolute zoom scale for an entity (based on current scale & bounds) */
   computeZoomScale: (app: PIXI.Application, entity: SpriteEntity) => number;
+
+  /** get profile-specific slots for a spread */
+  getSlotsForSpread: (spread: Spread) => Spread["slots"];
 }
 
 /** Fit a container to the screen using its current world bounds, return *absolute* scale */

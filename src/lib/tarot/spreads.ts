@@ -35,7 +35,14 @@ export type Category = {
 export type Spread = {
   id: string; // "ppf", "fml", "pphao", "gsbbl", "this-or-that", "horoscope"
   title: string;
-  slots: { idKey: string; cardLabel: string; xPerc: number; yPerc: number }[]; // "Past • Present • Future"
+  slots: { 
+    idKey: string; 
+    cardLabel: string; 
+    xPerc: number; 
+    yPerc: number;
+    angle?: number; // Optional rotation angle for cards
+    profile?: "mobile" | "tablet" | "desktop"; // Optional profile-specific formatting
+  }[]; // "Past • Present • Future"
   categories: Category[]; // includes a "custom" category with "Write My Own Intention"
 };
 
@@ -45,6 +52,36 @@ export const substituteVars = (label: string, vars: Record<string, string>) =>
 
 export const needsRelationshipName = (i: Intention) =>
   i.requiresName || /\$\{relationshipName\}/.test(i.label);
+
+// Filter slots for a specific profile, falling back to non-profile-specific slots
+export const getSlotsForProfile = (spread: Spread, profileId: "mobile" | "tablet" | "desktop") => {
+  // First, get all slots that match the current profile
+  const profileSlots = spread.slots.filter(slot => slot.profile === profileId);
+  
+  // Get all slots without profile specification as fallbacks
+  const genericSlots = spread.slots.filter(slot => !slot.profile);
+  
+  // If we have profile-specific slots, use those; otherwise use generic slots
+  if (profileSlots.length > 0) {
+    // For each unique idKey, prefer profile-specific over generic
+    const slotMap = new Map();
+    
+    // Add generic slots first
+    genericSlots.forEach(slot => {
+      slotMap.set(slot.idKey, slot);
+    });
+    
+    // Override with profile-specific slots
+    profileSlots.forEach(slot => {
+      slotMap.set(slot.idKey, slot);
+    });
+    
+    return Array.from(slotMap.values());
+  }
+  
+  // If no profile-specific slots exist, return all generic slots
+  return genericSlots;
+};
 
 // You'll use this to render select options grouped by <optgroup>.
 export const getSpreadById = (id: string, spreads = SPREADS) =>

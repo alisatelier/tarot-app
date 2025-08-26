@@ -13,6 +13,7 @@ import {
   backSrcFor,
   type Colorway,
 } from "../../../../lib/tarot/cards";
+import type { Spread as SpreadType } from "../../../../lib/tarot/spreads";
 import { computeSpawnPoint } from "../interfaces/deal.spawn";
 import { preScaleEntityForProfile } from "../interfaces/ResponsiveSizing";
 import { type Target, tweenCardToTarget } from "./cardTween";
@@ -30,10 +31,12 @@ export interface SpreadSlot {
   yPerc: number;
   angle?: number;
   cardLabel?: string;
+  profile?: "mobile" | "tablet" | "desktop"; // Optional profile-specific formatting
 }
 
-export interface Spread {
+export interface LocalSpread {
   id: string;
+  title: string;
   slots: SpreadSlot[];
 }
 
@@ -61,7 +64,7 @@ export interface DealToSpreadParams {
   gradientToRef: React.MutableRefObject<number>;
 
   // Current spread and state
-  spread: Spread;
+  spread: SpreadType;
   colorway: Colorway;
 
   // State setters
@@ -164,6 +167,10 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     return;
   }
 
+  // Get profile-specific slots for the current device
+  const currentProfile = profileRef.current ?? pickProfile(appRef.current.screen.width);
+  const profileSlots: SpreadType["slots"] = currentProfile.getSlotsForSpread(spread);
+
   // Setup background
   usingGradientRef.current = true;
   gradientFromRef.current = 0x000000;
@@ -207,11 +214,11 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   // Generate new card assignments
   const seedStr = getSeed();
   setSeed(seedStr);
-  const picks = pickCardsDeterministic(seedStr, spread.slots.length);
+  const picks = pickCardsDeterministic(seedStr, profileSlots.length);
 
   const newAssignments: CardAssignment[] = picks.map(
     (p: CardPick, i: number) => ({
-      slotKey: spread.slots[i].idKey,
+      slotKey: profileSlots[i].idKey,
       cardId: p.id,
       reversed: p.reversed,
     })
@@ -237,7 +244,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   );
 
   // Create sprite entities
-  for (let i = 0; i < spread.slots.length; i++) {
+  for (let i = 0; i < profileSlots.length; i++) {
     const { slotKey, cardId, reversed } = newAssignments[i];
 
     // Create physics body
@@ -326,7 +333,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
 
     // Create the label for this slot (text only, position set after animation)
     // AFTER spritesRef.current.push(entity);
-    const slotMeta = spread.slots.find((s) => s.idKey === slotKey);
+    const slotMeta = profileSlots.find((s) => s.idKey === slotKey);
     const labelText =
       slotMeta?.cardLabel ?? slotKey.replace(/-/g, " ").toLowerCase();
     const label = new PIXI.Text({
@@ -363,7 +370,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   if (spread.id === "horoscope-12") {
     targets = computeHoroscopeTargets(pixiApp);
   } else {
-    targets = spread.slots.map((slot) => ({
+    targets = profileSlots.map((slot) => ({
       x: (slot.xPerc / 100) * W,
       y: (slot.yPerc / 100) * H,
       angle: slot.angle ?? 0,

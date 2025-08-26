@@ -12,9 +12,9 @@ export const SPREADS: Spread[] = [
       { profile: "tablet", idKey: "past-3", cardLabel: "Past", xPerc: 30, yPerc: 50 },
       { profile: "tablet", idKey: "present-3", cardLabel: "Present", xPerc: 50, yPerc: 50 },
       { profile: "tablet", idKey: "future-3", cardLabel: "Future", xPerc: 70, yPerc: 50 },
-      { profile: "mobile", idKey: "past-3", cardLabel: "Past", xPerc: 30, yPerc: 30 },
+      { profile: "mobile", idKey: "past-3", cardLabel: "Past", xPerc: 30, yPerc: 20 },
       { profile: "mobile", idKey: "present-3", cardLabel: "Present", xPerc: 30, yPerc: 50 },
-      { profile: "mobile", idKey: "future-3", cardLabel: "Future", xPerc: 30, yPerc: 70 },
+      { profile: "mobile", idKey: "future-3", cardLabel: "Future", xPerc: 30, yPerc: 80 },
     ],
     categories: [
       {
@@ -747,11 +747,11 @@ export const SPREADS: Spread[] = [
     { profile: "tablet",  idKey: "advice-5",  cardLabel: "Advice",        xPerc: 67, yPerc: 50 },
     { profile: "tablet",  idKey: "outcome-5", cardLabel: "Outcome",       xPerc: 84, yPerc: 50 },
   // mobile (vertical stack left @ x=30)
-     { profile: "mobile",  idKey: "past-5",    cardLabel: "Past",          xPerc: 30, yPerc: 20 },
-     { profile: "mobile",  idKey: "present-5", cardLabel: "Present",       xPerc: 30, yPerc: 35 },
+     { profile: "mobile",  idKey: "past-5",    cardLabel: "Past",          xPerc: 30, yPerc: 10 },
+     { profile: "mobile",  idKey: "present-5", cardLabel: "Present",       xPerc: 30, yPerc: 30 },
      { profile: "mobile",  idKey: "hidden-5",  cardLabel: "Hidden Issues", xPerc: 30, yPerc: 50 },
-     { profile: "mobile",  idKey: "advice-5",  cardLabel: "Advice",        xPerc: 30, yPerc: 65 },
-     { profile: "mobile",  idKey: "outcome-5", cardLabel: "Outcome",       xPerc: 30, yPerc: 80 },
+     { profile: "mobile",  idKey: "advice-5",  cardLabel: "Advice",        xPerc: 30, yPerc: 70 },
+     { profile: "mobile",  idKey: "outcome-5", cardLabel: "Outcome",       xPerc: 30, yPerc: 90 },
     ],
     categories: [
       {
@@ -1011,11 +1011,11 @@ export const SPREADS: Spread[] = [
   { profile: "tablet",  idKey: "bridge-5",  cardLabel: "Bridge", xPerc: 67, yPerc: 50 },
   { profile: "tablet",  idKey: "lesson-5",  cardLabel: "Lesson", xPerc: 84, yPerc: 50 },
   // mobile (vertical stack left @ x=30)
-  { profile: "mobile",  idKey: "goal-5",    cardLabel: "Goal",   xPerc: 30, yPerc: 20 },
-  { profile: "mobile",  idKey: "current-5", cardLabel: "Status", xPerc: 30, yPerc: 35 },
+  { profile: "mobile",  idKey: "goal-5",    cardLabel: "Goal",   xPerc: 30, yPerc: 10 },
+  { profile: "mobile",  idKey: "current-5", cardLabel: "Status", xPerc: 30, yPerc: 30 },
   { profile: "mobile",  idKey: "block-5",   cardLabel: "Block",  xPerc: 30, yPerc: 50 },
-  { profile: "mobile",  idKey: "bridge-5",  cardLabel: "Bridge", xPerc: 30, yPerc: 65 },
-  { profile: "mobile",  idKey: "lesson-5",  cardLabel: "Lesson", xPerc: 30, yPerc: 80 },
+  { profile: "mobile",  idKey: "bridge-5",  cardLabel: "Bridge", xPerc: 30, yPerc: 70 },
+  { profile: "mobile",  idKey: "lesson-5",  cardLabel: "Lesson", xPerc: 30, yPerc: 90 },
 ],
     categories: [
       {
@@ -1279,11 +1279,11 @@ export const SPREADS: Spread[] = [
   { profile: "tablet",  idKey: "consB-5", cardLabel: "Cons:\nOption B",xPerc: 80, yPerc: 65 },
   // mobile (requested layout)
   { profile: "mobile",  idKey: "focus-5", cardLabel: "Focus",         xPerc: 50, yPerc: 20 },
-  { profile: "mobile",  idKey: "prosA-5", cardLabel: "Pros:\nOption A",xPerc: 20, yPerc: 50 },
-  { profile: "mobile",  idKey: "consA-5", cardLabel: "Cons:\nOption A",xPerc: 35, yPerc: 50 },
-  { profile: "mobile",  idKey: "prosB-5", cardLabel: "Pros:\nOption B",xPerc: 65, yPerc: 80 },
-  { profile: "mobile",  idKey: "consB-5", cardLabel: "Cons:\nOption B",xPerc: 80, yPerc: 80 },
-]
+  { profile: "mobile",  idKey: "prosA-5", cardLabel: "Pros:\nOption A",xPerc: 30, yPerc: 50 },
+  { profile: "mobile",  idKey: "consA-5", cardLabel: "Cons:\nOption A",xPerc: 70, yPerc: 50 },
+  { profile: "mobile",  idKey: "prosB-5", cardLabel: "Pros:\nOption B",xPerc: 30, yPerc: 80 },
+  { profile: "mobile",  idKey: "consB-5", cardLabel: "Cons:\nOption B",xPerc: 70, yPerc: 80 },
+],
     categories: [
       {
         id: "custom",

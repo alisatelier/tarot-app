@@ -1,5 +1,6 @@
 import type { TarotInterfaceProfile } from "./types";
 import { fitScaleToScreen } from "./types";
+import { getSlotsForProfile } from "../../../../lib/tarot/spreads";
 
 /** Create a profile without using `this` inside methods. */
 export function makeProfile(cfg: {
@@ -18,6 +19,9 @@ export function makeProfile(cfg: {
         cfg.zoomPadding,
         cfg.zoomOverscale ?? 1
       );
+    },
+    getSlotsForSpread(spread) {
+      return getSlotsForProfile(spread, cfg.id);
     },
   };
 }
