@@ -3,29 +3,25 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import * as PIXI from "pixi.js";
 import Matter from "matter-js";
-import { useTarotStore } from "./useTarotStore";
-import { ALL_CARD_IDS } from "./useTarotStore";
-
+import { useTarotStore, ALL_CARD_IDS } from "./useTarotStore";
 import { CardInteractions } from "./CardInteractions";
 import { pickProfile } from "./interfaces/profile.registry";
 import type { TarotInterfaceProfile } from "./interfaces/types";
-import {
-  recomputeAndApplyBaseScaleWithProfile,
-} from "./ResponsiveSizing";
+import { recomputeAndApplyBaseScaleWithProfile } from "./ResponsiveSizing";
 import { dealToSpread as runDealToSpread, drawGradientBg } from "./animations/dealToSpread";
-
 import {
   frontSrcFor,
   backSrcFor,
   type Colorway,
 } from "../../../lib/tarot/cards";
 import { 
-  spreads, 
+  SPREADS as spreads,
   horoscopeSpreadDef, 
   pathAVsBSpreadDef,
-  type SpreadDef 
+  thisOrThatSpreadDef,
+  getPathsForIntention,
+  type Spread
 } from "../../../lib/tarot/spreads";
-import { getPathsForIntention } from "../../../lib/tarot/question";
 
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
@@ -46,8 +42,6 @@ type SpriteEntity = {
   slotKey: string;
   zoomState: "normal" | "zoomed";
 };
-
-// Constants - removed unused WINDOWS_5, WINDOWS_3, and windowCenterTarget
 
 function bgPath(colorway: "pink" | "grey", w: number, h: number) {
   const variant = w >= h ? "Desktop" : "Mobile";
@@ -116,11 +110,11 @@ export default function TarotCanvas() {
   // Store
   const {
     spreadId,
-    category,
-    intentionId,
+    selectedIntentionId,
+    relationshipName,
     setSpreadId,
-    setCategory,
-    setIntentionId,
+    setSelectedIntentionId,
+    setRelationshipName,
   } = useTarotStore();
 
   // Local state for missing properties (temporary)
@@ -131,16 +125,25 @@ export default function TarotCanvas() {
   // Create a spread object from spreadId with proper slot data
   const spread = useMemo(() => {
     // Map spreadId to the correct spread definition
-    const spreadIdMap: Record<string, () => SpreadDef> = {
-      "ppf": () => spreads.find(s => s.id === "past-present-future")!,
-      "fml": () => spreads.find(s => s.id === "focus-forward-letgo")!,
-      "kdk": () => spreads.find(s => s.id === "know-dont-need")!,
-      "pphao": () => spreads.find(s => s.id === "pp-issues-advice-outcome")!,
-      "gcsbl": () => spreads.find(s => s.id === "goal-pos-block-bridge-lesson")!,
+    const spreadIdMap: Record<string, () => Spread> = {
+      "ppf": () => spreads.find((s: Spread) => s.id === "ppf")!,
+      "fml": () => spreads.find((s: Spread) => s.id === "fml")!,
+      "kdk": () => spreads.find((s: Spread) => s.id === "kdk")!,
+      "pphao": () => spreads.find((s: Spread) => s.id === "pphao")!,
+      "gcsbl": () => spreads.find((s: Spread) => s.id === "gsbbl")!,
+      "gsbbl": () => spreads.find((s: Spread) => s.id === "gsbbl")!,
+      "this-or-that": () => {
+        // For this-or-that, use the selected intention to get path names if it's a binary intention
+        if (selectedIntentionId) {
+          const paths = getPathsForIntention(selectedIntentionId);
+          return thisOrThatSpreadDef(paths.pathA, paths.pathB);
+        }
+        return spreads.find((s: Spread) => s.id === "this-or-that")!;
+      },
       "pathab": () => {
         // For pathab, use the selected intention to get path names
-        if (intentionId) {
-          const paths = getPathsForIntention(intentionId);
+        if (selectedIntentionId) {
+          const paths = getPathsForIntention(selectedIntentionId);
           return pathAVsBSpreadDef(paths.pathA, paths.pathB);
         }
         return pathAVsBSpreadDef("Path A", "Path B");
@@ -156,10 +159,11 @@ export default function TarotCanvas() {
     // Fallback
     return {
       id: spreadId,
-      label: "Unknown Spread",
-      slots: []
+      title: "Unknown Spread",
+      slots: [],
+      categories: []
     };
-  }, [spreadId, intentionId]);
+  }, [spreadId, selectedIntentionId]);
 
   // Early background preloading effect
   useEffect(() => {
@@ -422,41 +426,38 @@ export default function TarotCanvas() {
   }, [setColorway]);
 
   // Simplified dealToSpread function
-  async function dealToSpread() {
+  const dealToSpread = async () => {
     if (!appRef.current || !engineRef.current) return;
     if (dealing) return;
-    
+
     setDealing(true);
-    // Simplified implementation - just calls the modular function
     try {
       await runDealToSpread({
         spread,
         colorway,
         setDealing,
-        appRef: appRef as any,
-        engineRef: engineRef as any,
-        spritesRef: spritesRef as any,
-        profileRef: profileRef as any,
-        baseCardScaleRef: baseCardScaleRef as any,
-        currentZoomedCardRef: currentZoomedCardRef as any,
-        hoverAnimRef: hoverAnimRef as any,
-        bgRef: bgRef as any,
-        gradientRef: gradientRef as any,
-        usingGradientRef: usingGradientRef as any,
-        gradientFromRef: gradientFromRef as any,
-        gradientToRef: gradientToRef as any,
+        appRef,
+        engineRef,
+        spritesRef,
+        profileRef,
+        baseCardScaleRef,
+        currentZoomedCardRef,
+        hoverAnimRef,
+        bgRef,
+        gradientRef,
+        usingGradientRef,
+        gradientFromRef,
+        gradientToRef,
         setSeed,
         setAssignments,
-        interactions: interactions as any
+        interactions,
       });
     } catch (error) {
       console.error("Error in dealToSpread:", error);
     } finally {
       setDealing(false);
     }
-  }
-
-
+  };
 
   return (
     <div className="w-full pt-8">

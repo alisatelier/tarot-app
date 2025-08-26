@@ -1,3 +1,5 @@
+// Removed invalid import of SavedReading; type is defined below.
+
 const KEY = "tarot_readings_v1";
 
 export type SavedReading = {
@@ -10,14 +12,21 @@ export type SavedReading = {
   cards: { id: string; reversed: boolean; slotKey: string }[];
 };
 
-export function saveReading(r: SavedReading) {
-  const existing = loadAllReadings();
-  existing.unshift(r);
-  try {
-    localStorage.setItem(KEY, JSON.stringify(existing.slice(0, 50)));
-  } catch {
-    // ignore quota errors
+// Example local-storage fallback; swap with API/DB as needed.
+const STORAGE_KEY = "tarot.readings.v2";
+
+export async function saveReading(reading: SavedReading): Promise<void> {
+  const raw = (typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY)) || "[]";
+  const list: SavedReading[] = JSON.parse(raw);
+  list.unshift(reading); // newest first
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   }
+}
+
+export async function listReadings(): Promise<SavedReading[]> {
+  const raw = (typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY)) || "[]";
+  return JSON.parse(raw);
 }
 
 export function loadAllReadings(): SavedReading[] {
