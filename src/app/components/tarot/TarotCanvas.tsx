@@ -9,19 +9,23 @@ import { bgPath } from "./utils/background";
 import { pickProfile } from "./interfaces/profile.registry";
 import type { TarotInterfaceProfile } from "./interfaces/types";
 import { recomputeAndApplyBaseScaleWithProfile } from "./interfaces/ResponsiveSizing";
-import { dealToSpread as runDealToSpread, drawGradientBg, repositionLabels } from "./animations/dealToSpread";
+import {
+  dealToSpread as runDealToSpread,
+  drawGradientBg,
+  repositionLabels,
+} from "./animations/dealToSpread";
 import {
   frontSrcFor,
   backSrcFor,
   type Colorway,
 } from "../../../lib/tarot/cards";
-import { 
-  SPREADS as spreads,
-  horoscopeSpreadDef, 
+import {
+  type Spread,
+  SPREADS,
+  horoscopeSpreadDef,
   pathAVsBSpreadDef,
   thisOrThatSpreadDef,
   getPathsForIntention,
-  type Spread
 } from "../../../lib/tarot/spreads";
 
 //intention
@@ -48,7 +52,6 @@ type SpriteEntity = {
   slotKey: string;
   zoomState: "normal" | "zoomed";
 };
-
 
 function coverSpriteTo(app: PIXI.Application, sprite: PIXI.Sprite) {
   const W = app.renderer.width;
@@ -97,7 +100,7 @@ export default function TarotCanvas() {
       // Generate background URLs using bgPath function for consistency
       const backgroundUrls = [
         bgPath("pink", 1920, 1080), // Desktop Pink
-        bgPath("pink", 1080, 1920), // Mobile Pink  
+        bgPath("pink", 1080, 1920), // Mobile Pink
         bgPath("grey", 1920, 1080), // Desktop Grey
         bgPath("grey", 1080, 1920), // Mobile Grey
       ];
@@ -127,30 +130,35 @@ export default function TarotCanvas() {
   // Create a spread object from spreadId with proper slot data
   const spread = useMemo(() => {
     // Map spreadId to the correct spread definition
+    // Replace tarotSpreads with the correct spreads array/object from '../../../lib/tarot/spreads'
+    // For example, if the correct export is 'spreadList', update accordingly:
+    // import { spreadList, ... } from "../../../lib/tarot/spreads";
+    // and use spreadList below.
+
+    const spreadList: Spread[] = SPREADS; // Using the actual spreads array
+
     const spreadIdMap: Record<string, () => Spread> = {
-      "ppf": () => spreads.find((s: Spread) => s.id === "ppf")!,
-      "fml": () => spreads.find((s: Spread) => s.id === "fml")!,
-      "kdk": () => spreads.find((s: Spread) => s.id === "kdk")!,
-      "pphao": () => spreads.find((s: Spread) => s.id === "pphao")!,
-      "gcsbl": () => spreads.find((s: Spread) => s.id === "gsbbl")!,
-      "gsbbl": () => spreads.find((s: Spread) => s.id === "gsbbl")!,
+      ppf: () => spreadList.find((s: Spread) => s.id === "ppf")!,
+      fml: () => spreadList.find((s: Spread) => s.id === "fml")!,
+      kdk: () => spreadList.find((s: Spread) => s.id === "kdk")!,
+      pphao: () => spreadList.find((s: Spread) => s.id === "pphao")!,
+      gcsbl: () => spreadList.find((s: Spread) => s.id === "gsbbl")!,
+      gsbbl: () => spreadList.find((s: Spread) => s.id === "gsbbl")!,
       "this-or-that": () => {
-        // For this-or-that, use the selected intention to get path names if it's a binary intention
         if (selectedIntentionId) {
           const paths = getPathsForIntention(selectedIntentionId);
           return thisOrThatSpreadDef(paths.pathA, paths.pathB);
         }
-        return spreads.find((s: Spread) => s.id === "this-or-that")!;
+        return spreadList.find((s: Spread) => s.id === "this-or-that")!;
       },
-      "pathab": () => {
-        // For pathab, use the selected intention to get path names
+      pathab: () => {
         if (selectedIntentionId) {
           const paths = getPathsForIntention(selectedIntentionId);
           return pathAVsBSpreadDef(paths.pathA, paths.pathB);
         }
         return pathAVsBSpreadDef("Path A", "Path B");
       },
-      "horoscope": () => horoscopeSpreadDef(),
+      horoscope: () => horoscopeSpreadDef(),
     };
 
     const getSpread = spreadIdMap[spreadId];
@@ -158,12 +166,11 @@ export default function TarotCanvas() {
       return getSpread();
     }
 
-    // Fallback
     return {
       id: spreadId,
       title: "Unknown Spread",
       slots: [],
-      categories: []
+      categories: [],
     };
   }, [spreadId, selectedIntentionId]);
 
@@ -466,88 +473,89 @@ export default function TarotCanvas() {
       setDealing(false);
     }
   };
-const useIntentionStore = useMemo(() => makeIntentionStore(spread.id), [spread.id]);
+  const useIntentionStore = useMemo(
+    () => makeIntentionStore(spread.id),
+    [spread.id]
+  );
 
-const intentions = useMemo(() => {
-  // Convert the complex spread to simplified format for flattenIntentions
-  const simpleSpread = {
-    id: spread.id,
-    title: spread.title,
-    slots: spread.slots,
-    categories: spread.categories.map(cat => ({
-      id: cat.id,
-      title: cat.title,
-      intentions: cat.intentions.map(intention => ({
-        id: intention.id,
-        kind: "simple" as const,
-        label: intention.label,
-        requiresName: intention.requiresName
-      }))
-    }))
+  const intentions = useMemo(() => {
+    // Convert the complex spread to simplified format for flattenIntentions
+    const simpleSpread = {
+      id: spread.id,
+      title: spread.title,
+      slots: spread.slots,
+      categories: spread.categories.map((cat) => ({
+        id: cat.id,
+        title: cat.title,
+        intentions: cat.intentions.map((intention) => ({
+          id: intention.id,
+          kind: "simple" as const,
+          label: intention.label,
+          requiresName: intention.requiresName,
+        })),
+      })),
+    };
+    return flattenIntentions(simpleSpread, { relationshipName });
+  }, [spread, relationshipName]);
+
+  const resolvedIntention = useResolvedIntention(useIntentionStore);
+
+  const onPull = async () => {
+    const intention = resolvedIntention; // <-- exact string (custom or preset)
+    // If you have a startReading or LLM call here, pass it in:
+    // await startReading({ spreadId: spread.id, intention, ... })
+    await dealToSpread(); // if pull simply animates dealing, keep this too
   };
-  return flattenIntentions(simpleSpread, { relationshipName });
-}, [spread, relationshipName]);
 
-const resolvedIntention = useResolvedIntention(useIntentionStore);
+  const onSave = async () => {
+    const intention = resolvedIntention;
+    // await saveCurrentReading({ intention }); // add intention to your save payload
+    console.log("Save reading with intention:", intention);
+  };
 
-const onPull = async () => {
-  const intention = resolvedIntention; // <-- exact string (custom or preset)
-  // If you have a startReading or LLM call here, pass it in:
-  // await startReading({ spreadId: spread.id, intention, ... })
-  await dealToSpread(); // if pull simply animates dealing, keep this too
-};
+  return (
+    <>
+      <div className="w-full pt-8">
+        {/* Simplified controls - only colorway and pull button */}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          {/* Colorway */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-600">Deck Colour</span>
+            <select
+              className="px-3 py-2 rounded-xl border"
+              value={colorway}
+              onChange={(e) => setColorway(e.target.value as Colorway)}
+            >
+              <option value="pink">Pink</option>
+              <option value="grey">Grey</option>
+            </select>
+          </div>
 
-const onSave = async () => {
-  const intention = resolvedIntention;
-  // await saveCurrentReading({ intention }); // add intention to your save payload
-  console.log("Save reading with intention:", intention);
-};
-
-
-return (
-  <>
-
-    <div className="w-full pt-8">
-      {/* Simplified controls - only colorway and pull button */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        {/* Colorway */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-600">Deck Colour</span>
-          <select
-            className="px-3 py-2 rounded-xl border"
-            value={colorway}
-            onChange={(e) => setColorway(e.target.value as Colorway)}
+          <button
+            onClick={dealToSpread}
+            className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
+            disabled={dealing}
           >
-            <option value="pink">Pink</option>
-            <option value="grey">Grey</option>
-          </select>
+            {dealing ? "Pulling..." : "Pull Spread"}
+          </button>
         </div>
 
-        <button
-          onClick={dealToSpread}
-          className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
-          disabled={dealing}
-        >
-          {dealing ? "Pulling..." : "Pull Spread"}
-        </button>
-      </div>
-
-      {/* Canvas */}
-      <div
-        ref={containerRef}
-        className="tarot-canvas-container w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
-      >
+        {/* Canvas */}
         <div
-          className={`tarot-canvas-background ${colorway} ${
-            backgroundReady ? "loaded" : ""
-          }`}
-          aria-hidden="true"
-        />
+          ref={containerRef}
+          className="tarot-canvas-container w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
+        >
+          <div
+            className={`tarot-canvas-background ${colorway} ${
+              backgroundReady ? "loaded" : ""
+            }`}
+            aria-hidden="true"
+          />
+        </div>
+        <p className="mt-3 text-sm text-neutral-600">
+          Tip: Click a card to reveal → click again to zoom.
+        </p>
       </div>
-      <p className="mt-3 text-sm text-neutral-600">
-        Tip: Click a card to reveal → click again to zoom.
-      </p>
-    </div>
-  </>
-)
+    </>
+  );
 }

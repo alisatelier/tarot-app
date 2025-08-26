@@ -1,3 +1,10 @@
+
+
+import { SPREADS } from "./questionDropDown";
+
+// Re-export SPREADS so other files can import it from this module
+export { SPREADS };
+
 // src/app/components/tarot/spreads.ts
 export type IntentionKind = "simple" | "binary"; // binary = "This or That"
 
