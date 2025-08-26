@@ -357,12 +357,6 @@ export default function TarotCanvas() {
           s.front.visible = s.isFaceUp;
           s.back.visible = !s.isFaceUp;
           s.clip.position.set(0, 0);
-
-          // TEMPORARILY DISABLED - Update label position to stay with the card
-          // const lbl = (s as any).__label as PIXI.Text | undefined;
-          // if (lbl) {
-          //   lbl.position.set(x, y + s.front.height / 2 + 5); // Close to the card
-          // }
         }
       });
 
