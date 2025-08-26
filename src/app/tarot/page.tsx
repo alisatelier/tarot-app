@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import SelectorBar from "../components/tarot/utils/SelectorBar";
+import SelectorBar from "../components/tarot/layouts/SelectorBar";
 
 const TarotCanvas = dynamic(() => import("../components/tarot/TarotCanvas"), {
   ssr: false,
@@ -35,11 +35,6 @@ export default function TarotPage() {
 
         {/* Main panel */}
         <section className="card p-4 sm:p-6">
-          <IntentionPicker
-            useIntentionStore={useIntentionStore}
-            intentions={intentions}
-            className="mb-3"
-          />
           <SelectorBar />
           <TarotCanvas />
         </section>

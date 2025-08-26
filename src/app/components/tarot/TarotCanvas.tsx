@@ -501,16 +501,6 @@ const onSave = async () => {
 
 return (
   <>
-    <div className="space-y-4">
-      <IntentionPicker useIntentionStore={useIntentionStore} intentions={intentions} />
-
-      <button
-        onClick={onPull}
-        className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
-      >
-        Pull Spread
-      </button>
-    </div>
 
     <div className="w-full pt-8">
       {/* Simplified controls - only colorway and pull button */}
