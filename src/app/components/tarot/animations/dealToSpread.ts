@@ -14,12 +14,12 @@ import {
   type Colorway,
 } from "../../../../lib/tarot/cards";
 import { computeSpawnPoint } from "../interfaces/deal.spawn";
-import { preScaleEntityForProfile } from "../ResponsiveSizing";
+import { preScaleEntityForProfile } from "../interfaces/ResponsiveSizing";
 import { type Target, tweenCardToTarget } from "./cardTween";
 import { computeHoroscopeTargets } from "../layouts/horoscope";
 import { applyLayoutOverrides } from "../interfaces/layout.overrides";
 import { pickProfile } from "../interfaces/profile.registry";
-import type { SpriteEntity } from "../types";
+import type { SpriteEntity } from "../utils/types";
 
 const { Bodies, Composite } = Matter;
 

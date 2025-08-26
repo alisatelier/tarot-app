@@ -1,7 +1,7 @@
 import * as PIXI from "pixi.js";
 import { Body } from "matter-js";
-import type { SpriteEntity } from "./types";
-import type { TarotInterfaceProfile } from "./interfaces/types";
+import type { SpriteEntity } from "../utils/types";
+import type { TarotInterfaceProfile } from "./types";
 
 export type RefLike<T> = { current: T };
 

@@ -4,10 +4,11 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import * as PIXI from "pixi.js";
 import Matter from "matter-js";
 import { useTarotStore, ALL_CARD_IDS } from "./useTarotStore";
-import { CardInteractions } from "./CardInteractions";
+import { CardInteractions } from "./utils/CardInteractions";
+import { bgPath } from "./utils/background";
 import { pickProfile } from "./interfaces/profile.registry";
 import type { TarotInterfaceProfile } from "./interfaces/types";
-import { recomputeAndApplyBaseScaleWithProfile } from "./ResponsiveSizing";
+import { recomputeAndApplyBaseScaleWithProfile } from "./interfaces/ResponsiveSizing";
 import { dealToSpread as runDealToSpread, drawGradientBg } from "./animations/dealToSpread";
 import {
   frontSrcFor,
@@ -43,11 +44,6 @@ type SpriteEntity = {
   zoomState: "normal" | "zoomed";
 };
 
-function bgPath(colorway: "pink" | "grey", w: number, h: number) {
-  const variant = w >= h ? "Desktop" : "Mobile";
-  const tone = colorway === "pink" ? "Pink" : "Grey";
-  return `/cards/canvas/${tone}-${variant}.png`;
-}
 
 function coverSpriteTo(app: PIXI.Application, sprite: PIXI.Sprite) {
   const W = app.renderer.width;
@@ -93,11 +89,12 @@ export default function TarotCanvas() {
     }
 
     backgroundPromiseRef.current = (async () => {
+      // Generate background URLs using bgPath function for consistency
       const backgroundUrls = [
-        "/cards/canvas/Pink-Desktop.png",
-        "/cards/canvas/Pink-Mobile.png",
-        "/cards/canvas/Grey-Desktop.png",
-        "/cards/canvas/Grey-Mobile.png",
+        bgPath("pink", 1920, 1080), // Desktop Pink
+        bgPath("pink", 1080, 1920), // Mobile Pink  
+        bgPath("grey", 1920, 1080), // Desktop Grey
+        bgPath("grey", 1080, 1920), // Mobile Grey
       ];
 
       await PIXI.Assets.load(backgroundUrls);

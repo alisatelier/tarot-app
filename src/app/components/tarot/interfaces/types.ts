@@ -1,5 +1,5 @@
 import * as PIXI from "pixi.js";
-import type { SpriteEntity } from "../types";
+import type { SpriteEntity } from "../utils/types";
 
 // Structural ref so we don't import React types here
 export type RefLike<T> = { current: T };

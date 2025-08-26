@@ -3,7 +3,7 @@ import Matter from "matter-js";
 const { Body } = Matter;
 
 // Import or define SpriteEntity type
-import type { SpriteEntity } from "../types";
+import type { SpriteEntity } from "../utils/types";
 
 // Define Target type
 export type Target = {

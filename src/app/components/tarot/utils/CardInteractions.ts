@@ -1,6 +1,6 @@
 import * as PIXI from "pixi.js";
 import type { SpriteEntity } from "./types";
-import type { TarotInterfaceProfile } from "./interfaces/types";
+import type { TarotInterfaceProfile } from "../interfaces/types";
 
 type Getter<T> = () => T;
 type Setter<T> = (v: T) => void;

@@ -1,0 +1,13 @@
+# ADR YYYY-MM-DD: <Intention Free Text>
+
+## Context
+
+We are reintroducing the intention free-text input so that users can have a custom experience. We will integrate this into the LLM and have the current dropdown selections as 'In case you need inpiration'.
+
+The 'Write Your Own Intention' should become no longer editable when another dropdown intention is selected, and if user selects 'Write Your Own Intention' again, the progress should be saved.
+
+## Decision
+Create a free-text input for intention that only appears when 'Write Your Own Intention' is selected from the drop down.
+
+## Consequences
+
