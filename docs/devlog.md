@@ -4,6 +4,11 @@ Quick running notes of what was happening at each commit or push.
 (Doesn’t need to be fancy—just a couple of lines helps.)
 
 ---
+
+## 2025-08-26 0626– GREEN PUSH - Intention Free-Text Cleaned Up 
+- IntentionPicker.tsx made redundant deleted file.
+
+
 ## 2025-08-26 0537– Intention Free-Text Working
 - Adjusted the SelectorBar.tsx to do most of the functions, and dropDownIntention.tsx to host most of the layout of the UI. IntentionPicker.tsx handles the "Write My Own Intention" Layout only.
 
