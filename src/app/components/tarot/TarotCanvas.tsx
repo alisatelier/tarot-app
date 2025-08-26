@@ -9,7 +9,7 @@ import { bgPath } from "./utils/background";
 import { pickProfile } from "./interfaces/profile.registry";
 import type { TarotInterfaceProfile } from "./interfaces/types";
 import { recomputeAndApplyBaseScaleWithProfile } from "./interfaces/ResponsiveSizing";
-import { dealToSpread as runDealToSpread, drawGradientBg } from "./animations/dealToSpread";
+import { dealToSpread as runDealToSpread, drawGradientBg, repositionLabels } from "./animations/dealToSpread";
 import {
   frontSrcFor,
   backSrcFor,
@@ -25,7 +25,6 @@ import {
 } from "../../../lib/tarot/spreads";
 
 //intention
-import IntentionPicker from "./intention/writeMyOwnIntention";
 import { makeIntentionStore } from "./intention/useIntentionStore";
 import { useResolvedIntention } from "./intention/useResolvedIntention";
 import { flattenIntentions } from "./intention/flattenIntentions";
@@ -305,6 +304,12 @@ export default function TarotCanvas() {
           nextProfile
         );
 
+        // 5) Reposition labels to match the new card positions after rescaling
+        //    (only if cards have been dealt)
+        if (spritesRef.current.length > 0) {
+          repositionLabels(spritesRef);
+        }
+
         // (optional) If you want to react when the profile bucket changes:
         // if (changed) console.debug("[Tarot] Interface profile:", nextProfile.id);
       };
@@ -352,6 +357,12 @@ export default function TarotCanvas() {
           s.front.visible = s.isFaceUp;
           s.back.visible = !s.isFaceUp;
           s.clip.position.set(0, 0);
+
+          // TEMPORARILY DISABLED - Update label position to stay with the card
+          // const lbl = (s as any).__label as PIXI.Text | undefined;
+          // if (lbl) {
+          //   lbl.position.set(x, y + s.front.height / 2 + 5); // Close to the card
+          // }
         }
       });
 

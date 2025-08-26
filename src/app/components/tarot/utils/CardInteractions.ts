@@ -67,6 +67,7 @@ export class CardInteractions {
   }
 
   private hideOtherCards(zoomedEntity: SpriteEntity, ms = 300) {
+    // Hide all other cards
     for (const entity of this.getSprites()) {
       if (entity === zoomedEntity) continue;
       const v = entity.view;
@@ -82,9 +83,30 @@ export class CardInteractions {
       };
       requestAnimationFrame(step);
     }
+
+    // Hide the entire label layer to prevent labels from showing behind/around the zoomed card
+    const app = this.getApp();
+    if (app) {
+      const stageAny = app.stage as any;
+      const labelLayer = stageAny.__labelLayer as PIXI.Container | undefined;
+      if (labelLayer) {
+        const labelFrom = labelLayer.alpha;
+        const labelTo = 0;
+        if (labelFrom !== labelTo) {
+          const labelStart = performance.now();
+          const labelStep = (now: number) => {
+            const t = Math.min(1, (now - labelStart) / ms);
+            labelLayer.alpha = labelFrom + (labelTo - labelFrom) * this.easeOutCubic(t);
+            if (t < 1) requestAnimationFrame(labelStep);
+          };
+          requestAnimationFrame(labelStep);
+        }
+      }
+    }
   }
 
   public showAllCards(ms = 300) {
+    // Show all cards
     for (const entity of this.getSprites()) {
       const v = entity.view;
       v.eventMode = "static";
@@ -98,6 +120,26 @@ export class CardInteractions {
         if (t < 1) requestAnimationFrame(step);
       };
       requestAnimationFrame(step);
+    }
+
+    // Show the entire label layer
+    const app = this.getApp();
+    if (app) {
+      const stageAny = app.stage as any;
+      const labelLayer = stageAny.__labelLayer as PIXI.Container | undefined;
+      if (labelLayer) {
+        const labelFrom = labelLayer.alpha;
+        const labelTo = 1;
+        if (labelFrom !== labelTo) {
+          const labelStart = performance.now();
+          const labelStep = (now: number) => {
+            const t = Math.min(1, (now - labelStart) / ms);
+            labelLayer.alpha = labelFrom + (labelTo - labelFrom) * this.easeOutCubic(t);
+            if (t < 1) requestAnimationFrame(labelStep);
+          };
+          requestAnimationFrame(labelStep);
+        }
+      }
     }
   }
 

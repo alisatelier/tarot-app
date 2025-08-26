@@ -5,6 +5,14 @@ Quick running notes of what was happening at each commit or push.
 
 ---
 
+## 2025-08-26 0703– Decrease distance between card and label
+- The ticker in TarotCanvas looped the sprite to match the physics body, which blocked the change of distance. resize() was then also blcoked and so was applyLayoutOverrides which modified target positions. Fixed by changing ticker.
+
+
+## 2025-08-26 0626– Bug Fix - Have labels diappear on zoom.
+- hideOtherCards method now includes labels. showAllCards also shows cards with label.
+
+
 ## 2025-08-26 0626– GREEN PUSH - Intention Free-Text Cleaned Up 
 - IntentionPicker.tsx made redundant deleted file.
 

@@ -330,16 +330,15 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     const labelText =
       slotMeta?.cardLabel ?? slotKey.replace(/-/g, " ").toLowerCase();
     const label = new PIXI.Text({
-      text: labelText,
+      text: labelText, // Removed TEST marker
       style: new PIXI.TextStyle({
         fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
         fontSize: 14,
-        fill: 0xffffff,
-
-        align: "center",
+        fill: 0xffffff, // Back to white text
+        align: "center"
       }),
     });
-    label.anchor.set(0.5, 0);
+    label.anchor.set(0.5, 0.5); // Center the label both horizontally and vertically
     label.alpha = 0; // we'll fade this in during the tween
     labelLayer.addChild(label);
     (entity as any).__label = label;
@@ -396,7 +395,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         if (!lbl) return;
         const { x, y } = e.body.position;
         lbl.x = x;
-        lbl.y = y + e.front.height / 2 + 8;
+        lbl.y = y + e.front.height / 2 - 20; // Much closer during animation
         lbl.rotation = 0;
 
         // fade in after the card has moved a little (nice feel)
@@ -413,7 +412,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
           // one last snap in case of rounding
           const { x, y } = e.body.position;
           lbl.x = x;
-          lbl.y = y + e.front.height / 2 + 8;
+          lbl.y = y + e.front.height / 2 - 20; // Much closer below the card
         }
       },
     });
@@ -425,10 +424,31 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     if (!lbl) continue;
     const { x, y } = entity.body.position;
     lbl.x = x;
-    lbl.y = y + entity.front.height / 2 + 8;
+    lbl.y = y + entity.front.height / 2 - 20; // Match the dealing distance
     lbl.rotation = 0;
     lbl.alpha = 1; // reveal
   }
 
   setDealing(false);
+}
+
+/**
+ * Repositions all labels relative to their card positions.
+ * Call this after window resize or card rescaling.
+ */
+export function repositionLabels(spritesRef: React.MutableRefObject<SpriteEntity[]>) {
+  // Only reposition if we have sprites and they have labels
+  if (!spritesRef.current || spritesRef.current.length === 0) {
+    return;
+  }
+
+  for (const entity of spritesRef.current) {
+    const lbl = (entity as any).__label as PIXI.Text | undefined;
+    if (!lbl || !entity.body || !entity.front) continue;
+    
+    const { x, y } = entity.body.position;
+    lbl.x = x;
+    lbl.y = y + entity.front.height / 2 - 20; // Much closer - reduced from -5 to -20
+    lbl.rotation = 0;
+  }
 }
