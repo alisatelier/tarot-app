@@ -25,7 +25,7 @@ import {
 } from "../../../lib/tarot/spreads";
 
 //intention
-import IntentionPicker from "./intention/IntentionPicker";
+import IntentionPicker from "./intention/writeMyOwnIntention";
 import { makeIntentionStore } from "./intention/useIntentionStore";
 import { useResolvedIntention } from "./intention/useResolvedIntention";
 import { flattenIntentions } from "./intention/flattenIntentions";
@@ -545,4 +545,4 @@ return (
     </div>
   </>
 )
-
+}

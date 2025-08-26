@@ -18,6 +18,7 @@ type Props = {
   onSpreadChange: (id: string) => void;
   onIntentionChange: (id: string) => void;
   onRelationshipNameChange: (name: string) => void;
+  onCustomIntentionChange?: (text: string) => void;
 };
 
 export default function DropDownIntention({
@@ -27,6 +28,7 @@ export default function DropDownIntention({
   onSpreadChange,
   onIntentionChange,
   onRelationshipNameChange,
+  onCustomIntentionChange,
 }: Props) {
   const spread = useMemo(() => getSpreadById(spreadId, SPREADS), [spreadId]);
   const [customIntentionText, setCustomIntentionText] = useState("");
@@ -66,6 +68,7 @@ export default function DropDownIntention({
               // Clear custom text when switching away from custom intention
               if (!e.target.value.endsWith(":custom:own")) {
                 setCustomIntentionText("");
+                onCustomIntentionChange?.("");
               }
             }}
           >
@@ -90,7 +93,7 @@ export default function DropDownIntention({
       {isCustomIntention && (
         <div className="flex flex-col gap-2">
           <label htmlFor="custom-intention-text" className="text-sm text-neutral-600">
-            Your Custom Intention
+           My Own Intention
           </label>
           <textarea
             id="custom-intention-text"
@@ -98,7 +101,10 @@ export default function DropDownIntention({
             maxLength={150}
             placeholder=" ✍️ Write your intention here..."
             value={customIntentionText}
-            onChange={(e) => setCustomIntentionText(e.target.value)}
+            onChange={(e) => {
+              setCustomIntentionText(e.target.value);
+              onCustomIntentionChange?.(e.target.value);
+            }}
           />
           <div className="text-xs text-neutral-500">
             {customIntentionText.length}/150 characters

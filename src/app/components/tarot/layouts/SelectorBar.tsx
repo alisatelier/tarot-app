@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTarotStore } from "../useTarotStore";
 import DropDownIntention from "../intention/dropDownIntention";
 import { 
@@ -20,6 +20,8 @@ export default function SelectorBar() {
     setRelationshipName,
   } = useTarotStore();
 
+  const [customIntentionText, setCustomIntentionText] = useState("");
+
   // Get the current spread and intention
   const spread = useMemo(() => getSpreadById(spreadId, SPREADS), [spreadId]);
   const intention = useMemo(() => {
@@ -27,11 +29,16 @@ export default function SelectorBar() {
     return getIntentionById(spread, selectedIntentionId);
   }, [spread, selectedIntentionId]);
 
-  // Render the resolved intention text (but not for custom intentions)
+  // Render the resolved intention text (includes custom intentions)
   const renderedIntention = useMemo(() => {
-    if (!intention || selectedIntentionId?.endsWith(":custom:own")) return "";
+    // For custom intentions, show the custom text if available
+    if (selectedIntentionId?.endsWith(":custom:own")) {
+      return customIntentionText.trim() || "";
+    }
+    // For preset intentions, show the resolved label
+    if (!intention) return "";
     return substituteVars(intention.label, { relationshipName });
-  }, [intention, relationshipName, selectedIntentionId]);
+  }, [intention, relationshipName, selectedIntentionId, customIntentionText]);
 
   return (
     <div className="grid gap-4">
@@ -45,14 +52,18 @@ export default function SelectorBar() {
           onSpreadChange={(id: string) => {
             setSpreadId(id);
             setSelectedIntentionId(null);
+            setCustomIntentionText(""); // Clear custom text when changing spreads
           }}
           onIntentionChange={(id: string) => setSelectedIntentionId(id)}
           onRelationshipNameChange={setRelationshipName}
+          onCustomIntentionChange={setCustomIntentionText}
         />
 
         {renderedIntention && (
           <div className="text-sm text-neutral-700 mt-2 p-2 bg-neutral-50 rounded">
-            <span className="font-medium">Selected Intention:</span> {renderedIntention}
+            <span className="font-medium">
+              {selectedIntentionId?.endsWith(":custom:own") ? "My Own Intention:" : "Selected Intention:"}
+            </span> {renderedIntention}
           </div>
         )}
       </div>
