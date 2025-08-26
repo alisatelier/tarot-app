@@ -2,6 +2,16 @@
 import Matter from "matter-js";
 const { Body } = Matter;
 
+// Import or define SpriteEntity type
+import type { SpriteEntity } from "../types";
+
+// Define Target type
+export type Target = {
+  x: number;
+  y: number;
+  angle?: number;
+};
+
 export type TweenOptions = {
   ms?: number;
   ease?: (t: number) => number;

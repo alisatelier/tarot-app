@@ -29,7 +29,7 @@ export class PixiSetup {
   static setupEngineAndRender(app: PIXI.Application) {
     const engine = Engine.create();
     engine.world.gravity.y = 0;
-    
+
     const render = Render.create({
       canvas: document.createElement("canvas"),
       engine: engine,
@@ -40,13 +40,13 @@ export class PixiSetup {
         background: "transparent",
       },
     });
-    
+
     render.canvas.style.position = "absolute";
     render.canvas.style.top = "0px";
     render.canvas.style.left = "0px";
     render.canvas.style.pointerEvents = "none";
     render.canvas.style.opacity = "0";
-    
+
     return { engine, render };
   }
 }
@@ -67,7 +67,12 @@ export class BackgroundUtils {
   }
 
   // Draw gradient background
-  static drawGradientBg(app: PIXI.Application, colorFrom: number, colorTo: number, gradientRef?: React.MutableRefObject<PIXI.Sprite | null>) {
+  static drawGradientBg(
+    app: PIXI.Application,
+    colorFrom: number,
+    colorTo: number,
+    gradientRef?: React.MutableRefObject<PIXI.Sprite | null>
+  ) {
     // Remove old gradient if ref is provided
     if (gradientRef?.current) {
       app.stage.removeChild(gradientRef.current);
@@ -141,4 +146,12 @@ export class AnimationUtils {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }
+}
+
+export function attachPhysicsTicker(app: PIXI.Application, engine: Engine) {
+  const cb = (ticker: PIXI.Ticker) => {
+    Engine.update(engine, ticker.deltaMS);
+  };
+  app.ticker.add(cb);
+  return () => app.ticker.remove(cb);
 }

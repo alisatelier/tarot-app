@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import SelectorBar from "../components/tarot/utils/SelectorBar";
 
 const TarotCanvas = dynamic(() => import("../components/tarot/TarotCanvas"), {
   ssr: false,
@@ -30,6 +31,7 @@ export default function TarotPage() {
 
         {/* Main panel */}
         <section className="card p-4 sm:p-6">
+          <SelectorBar />
           <TarotCanvas />
         </section>
 

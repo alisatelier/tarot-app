@@ -1,6 +1,7 @@
 import * as PIXI from "pixi.js";
 import Matter from "matter-js";
 import type React from "react";
+import type { MutableRefObject } from "react";
 import {
   pickCardsDeterministic,
   getSeed,
@@ -14,10 +15,11 @@ import {
 } from "../../../../lib/tarot/cards";
 import { computeSpawnPoint } from "../interfaces/deal.spawn";
 import { preScaleEntityForProfile } from "../ResponsiveSizing";
-import { type SpriteEntity, type Target, tweenCardToTarget } from "./cardTween";
+import { type Target, tweenCardToTarget } from "./cardTween";
 import { computeHoroscopeTargets } from "../layouts/horoscope";
 import { applyLayoutOverrides } from "../interfaces/layout.overrides";
 import { pickProfile } from "../interfaces/profile.registry";
+import type { SpriteEntity } from "../types";
 
 const { Bodies, Composite } = Matter;
 
@@ -70,13 +72,47 @@ export interface DealToSpreadParams {
   // Interactions
   interactions: React.MutableRefObject<any | null>; // CardInteractions
 
-  // Background drawing function
-  drawGradientBg: (
-    app: PIXI.Application,
-    from: number,
-    to: number,
-    ref: React.MutableRefObject<PIXI.Sprite | null> // match TarotCanvas
-  ) => void;
+}
+
+export function drawGradientBg(
+  app: PIXI.Application,
+  from: number,
+  to: number,
+  gradientRef: MutableRefObject<PIXI.Sprite | null>
+) {
+  if (gradientRef.current) {
+    app.stage.removeChild(gradientRef.current);
+    gradientRef.current.destroy(true);
+    gradientRef.current = null;
+  }
+
+  const w = app.renderer.width;
+  const h = app.renderer.height;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, "#" + from.toString(16).padStart(6, "0"));
+  grad.addColorStop(1, "#" + to.toString(16).padStart(6, "0"));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  const tex = PIXI.Texture.from(canvas);
+  const sprite = new PIXI.Sprite(tex);
+  sprite.width = w;
+  sprite.height = h;
+  sprite.alpha = 0;
+  app.stage.addChildAt(sprite, 0);
+
+  const fade = () => {
+    sprite.alpha = Math.min(1, sprite.alpha + 0.06);
+    if (sprite.alpha >= 1) app.ticker.remove(fade);
+  };
+  app.ticker.add(fade);
+
+  gradientRef.current = sprite;
 }
 
 function ensureLabelLayer(app: PIXI.Application): PIXI.Container {
@@ -134,7 +170,6 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     setSeed,
     setAssignments,
     interactions,
-    drawGradientBg,
   } = params;
 
   // Validation
