@@ -66,18 +66,6 @@ export class CardInteractions {
     this.setCurrentZoomed(entity);
   }
 
-  handleGlobalClick = (dealing: boolean) => {
-    if (dealing) return false;
-    const zoomed = this.getCurrentZoomed();
-    if (zoomed && zoomed.zoomState === "zoomed") {
-      this.zoomToCard(zoomed, false);
-      this.showAllCards();
-      this.setCurrentZoomed(null);
-      return true;
-    }
-    return false;
-  };
-
   private hideOtherCards(zoomedEntity: SpriteEntity, ms = 300) {
     for (const entity of this.getSprites()) {
       if (entity === zoomedEntity) continue;

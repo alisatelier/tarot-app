@@ -130,22 +130,6 @@ function ensureLabelLayer(app: PIXI.Application): PIXI.Container {
   return stageAny.__labelLayer as PIXI.Container;
 }
 
-function humanizeSlotKey(idKey: string) {
-  return idKey.replace(/-/g, " ").toLowerCase();
-}
-
-function makeLabel(text: string) {
-  return new PIXI.Text({
-    text,
-    style: new PIXI.TextStyle({
-      fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
-      fontSize: 14,
-      fill: 0xffffff,
-      align: "center",
-    }),
-  });
-}
-
 /**
  * Modular function to deal cards to a spread
  * Handles all the logic for creating, positioning, and animating cards
