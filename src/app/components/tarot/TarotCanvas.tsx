@@ -24,6 +24,12 @@ import {
   type Spread
 } from "../../../lib/tarot/spreads";
 
+//intention
+import IntentionPicker from "./intention/IntentionPicker";
+import { makeIntentionStore } from "./intention/useIntentionStore";
+import { useResolvedIntention } from "./intention/useResolvedIntention";
+import { flattenIntentions } from "./intention/flattenIntentions";
+
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
 // Additional types for TarotCanvas
@@ -455,8 +461,57 @@ export default function TarotCanvas() {
       setDealing(false);
     }
   };
+const useIntentionStore = useMemo(() => makeIntentionStore(spread.id), [spread.id]);
 
-  return (
+const intentions = useMemo(() => {
+  // Convert the complex spread to simplified format for flattenIntentions
+  const simpleSpread = {
+    id: spread.id,
+    title: spread.title,
+    slots: spread.slots,
+    categories: spread.categories.map(cat => ({
+      id: cat.id,
+      title: cat.title,
+      intentions: cat.intentions.map(intention => ({
+        id: intention.id,
+        kind: "simple" as const,
+        label: intention.label,
+        requiresName: intention.requiresName
+      }))
+    }))
+  };
+  return flattenIntentions(simpleSpread, { relationshipName });
+}, [spread, relationshipName]);
+
+const resolvedIntention = useResolvedIntention(useIntentionStore);
+
+const onPull = async () => {
+  const intention = resolvedIntention; // <-- exact string (custom or preset)
+  // If you have a startReading or LLM call here, pass it in:
+  // await startReading({ spreadId: spread.id, intention, ... })
+  await dealToSpread(); // if pull simply animates dealing, keep this too
+};
+
+const onSave = async () => {
+  const intention = resolvedIntention;
+  // await saveCurrentReading({ intention }); // add intention to your save payload
+  console.log("Save reading with intention:", intention);
+};
+
+
+return (
+  <>
+    <div className="space-y-4">
+      <IntentionPicker useIntentionStore={useIntentionStore} intentions={intentions} />
+
+      <button
+        onClick={onPull}
+        className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
+      >
+        Pull Spread
+      </button>
+    </div>
+
     <div className="w-full pt-8">
       {/* Simplified controls - only colorway and pull button */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -487,7 +542,6 @@ export default function TarotCanvas() {
         ref={containerRef}
         className="tarot-canvas-container w-full h-[70vh] rounded-2xl border bg-neutral-50 overflow-hidden"
       >
-        {/* CSS background fallback */}
         <div
           className={`tarot-canvas-background ${colorway} ${
             backgroundReady ? "loaded" : ""
@@ -499,5 +553,6 @@ export default function TarotCanvas() {
         Tip: Click a card to reveal → click again to zoom.
       </p>
     </div>
-  );
-}
+  </>
+)
+

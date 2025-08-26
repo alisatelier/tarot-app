@@ -21,20 +21,28 @@ export default function TarotPage() {
       <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
         {/* Header */}
         <header className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-semibold" style={{ color: "var(--brand-navy)" }}>
+          <h1
+            className="text-2xl sm:text-3xl font-semibold"
+            style={{ color: "var(--brand-navy)" }}
+          >
             Tarot Pull
           </h1>
           <p className="mt-1 text-[var(--ink-70)]">
-            Set your question, choose a spread & deck color, then begin your pull.
+            Set your question, choose a spread & deck color, then begin your
+            pull.
           </p>
         </header>
 
         {/* Main panel */}
         <section className="card p-4 sm:p-6">
+          <IntentionPicker
+            useIntentionStore={useIntentionStore}
+            intentions={intentions}
+            className="mb-3"
+          />
           <SelectorBar />
           <TarotCanvas />
         </section>
-
       </div>
     </main>
   );
