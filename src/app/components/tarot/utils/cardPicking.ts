@@ -32,8 +32,8 @@ export function pickCardsDeterministic(seedStr: string, n: number): CardPick[] {
  * Gets the seed from URL parameters or generates a new one
  * @returns Seed string for card selection
  */
-export function getSeed(): string {
+export function getSeedFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
   const url = new URL(window.location.href);
-  const s = url.searchParams.get("seed");
-  return s || `reading-${Date.now()}`;
+  return url.searchParams.get("seed");
 }

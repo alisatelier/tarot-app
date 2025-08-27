@@ -4,7 +4,7 @@ import type React from "react";
 import type { MutableRefObject } from "react";
 import {
   pickCardsDeterministic,
-  getSeed,
+  getSeedFromUrl,
   type CardPick,
 } from "../utils/cardPicking";
 import { ALL_CARD_IDS } from "../useTarotStore";
@@ -212,7 +212,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   spritesRef.current = [];
 
   // Generate new card assignments
-  const seedStr = getSeed();
+  const seedStr = getSeedFromUrl() || Math.random().toString(36).substring(2, 15);
   setSeed(seedStr);
   const picks = pickCardsDeterministic(seedStr, profileSlots.length);
 
@@ -336,16 +336,29 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     const slotMeta = profileSlots.find((s) => s.idKey === slotKey);
     const labelText =
       slotMeta?.cardLabel ?? slotKey.replace(/-/g, " ").toLowerCase();
+    
+    // Determine if this will be a side label for this spread and profile
+    const currentProfileType = currentProfile.id || "desktop";
+    const willBeSideLabel = currentProfileType === "mobile" && 
+      (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
+    
     const label = new PIXI.Text({
       text: labelText, // Removed TEST marker
       style: new PIXI.TextStyle({
         fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
         fontSize: 14,
         fill: 0xffffff, // Back to white text
-        align: "center"
+        align: willBeSideLabel ? "left" : "center"
       }),
     });
-    label.anchor.set(0.5, 0.5); // Center the label both horizontally and vertically
+    
+    // Set anchor based on label type
+    if (willBeSideLabel) {
+      label.anchor.set(0, 0.5); // Left-aligned, center vertically for side labels
+    } else {
+      label.anchor.set(0.5, 0.5); // Center the label both horizontally and vertically for bottom labels
+    }
+    
     label.alpha = 0; // we'll fade this in during the tween
     labelLayer.addChild(label);
     (entity as any).__label = label;
@@ -400,9 +413,10 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
       onUpdate: (e, t) => {
         const lbl = (e as any).__label as PIXI.Text | undefined;
         if (!lbl) return;
-        const { x, y } = e.body.position;
-        lbl.x = x;
-        lbl.y = y + e.front.height / 2 - 20; // Much closer during animation
+        
+        const position = getLabelPosition(e, spread, currentProfile.id || "desktop");
+        lbl.x = position.x;
+        lbl.y = position.y;
         lbl.rotation = 0;
 
         // fade in after the card has moved a little (nice feel)
@@ -417,9 +431,9 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         if (lbl) {
           lbl.alpha = 1;
           // one last snap in case of rounding
-          const { x, y } = e.body.position;
-          lbl.x = x;
-          lbl.y = y + e.front.height / 2 - 20; // Much closer below the card
+          const position = getLabelPosition(e, spread, currentProfile.id || "desktop");
+          lbl.x = position.x;
+          lbl.y = position.y;
         }
       },
     });
@@ -429,9 +443,10 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   for (const entity of spritesRef.current) {
     const lbl = (entity as any).__label as PIXI.Text | undefined;
     if (!lbl) continue;
-    const { x, y } = entity.body.position;
-    lbl.x = x;
-    lbl.y = y + entity.front.height / 2 - 20; // Match the dealing distance
+    
+    const position = getLabelPosition(entity, spread, currentProfile.id || "desktop");
+    lbl.x = position.x;
+    lbl.y = position.y;
     lbl.rotation = 0;
     lbl.alpha = 1; // reveal
   }
@@ -440,10 +455,67 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
 }
 
 /**
+ * Calculate label position based on spread type and profile
+ */
+function getLabelPosition(
+  entity: SpriteEntity, 
+  spread: SpreadType, 
+  profileType: "mobile" | "tablet" | "desktop"
+): { x: number; y: number } {
+  const { x, y } = entity.body.position;
+  // Account for scaling when calculating actual rendered dimensions
+  const scale = entity.view.scale.x || 1;
+  const actualCardWidth = entity.front.width * scale;
+  const actualCardHeight = entity.front.height * scale;
+  
+  // Check if this is a mobile profile and if the spread needs side labels
+  const isMobile = profileType === "mobile";
+  const needsSideLabels = isMobile && 
+    (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
+  
+  if (needsSideLabels) {
+    // Side labels: align with card center, appear on the right side, 5px beside the card edge
+    // Note: x is card center (anchor 0.5), so x + actualCardWidth/2 = right edge
+    return {
+      x: x + actualCardWidth / 2 + 5, // Right edge of card + 5px 
+      y: y  // Center vertically with the card
+    };
+  } else {
+    // Bottom labels with specific distances based on spread
+    let distance = 20; // default distance (positive for below card)
+    
+    if (isMobile) {
+      switch (spread.id) {
+        case "fml":
+        case "kdk":
+        case "this-or-that":
+          distance = 5; // Reduce distance to 5px
+          break;
+        case "horoscope":
+          distance = 3; // Reduce distance to 3px
+          break;
+        default:
+          distance = 20; // Keep existing distance for other spreads
+          break;
+      }
+    }
+    
+    return {
+      x: x,
+      y: y + actualCardHeight / 2 + distance
+    };
+  }
+}
+
+/**
  * Repositions all labels relative to their card positions.
  * Call this after window resize or card rescaling.
  */
-export function repositionLabels(spritesRef: React.MutableRefObject<SpriteEntity[]>) {
+export function repositionLabels(
+  spritesRef: React.MutableRefObject<SpriteEntity[]>,
+  spread?: SpreadType,
+  profileRef?: React.MutableRefObject<any | null>
+) {
   // Only reposition if we have sprites and they have labels
   if (!spritesRef.current || spritesRef.current.length === 0) {
     return;
@@ -453,9 +525,10 @@ export function repositionLabels(spritesRef: React.MutableRefObject<SpriteEntity
     const lbl = (entity as any).__label as PIXI.Text | undefined;
     if (!lbl || !entity.body || !entity.front) continue;
     
+    // Use simple fallback positioning for now to fix mobile issues
     const { x, y } = entity.body.position;
     lbl.x = x;
-    lbl.y = y + entity.front.height / 2 - 20; // Much closer - reduced from -5 to -20
+    lbl.y = y + entity.front.height / 2 + 5;
     lbl.rotation = 0;
   }
 }

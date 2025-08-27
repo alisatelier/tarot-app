@@ -190,7 +190,7 @@ export default function TarotCanvas() {
       await app.init({
         backgroundAlpha: 0,
         antialias: true,
-        resolution: window.devicePixelRatio || 1,
+        resolution: (typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1,
         autoDensity: true,
       });
 
@@ -287,7 +287,7 @@ export default function TarotCanvas() {
 
       const resize = () => {
         const el = containerRef.current!;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const dpr = Math.min((typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1, 2);
 
         // 1) Resize the PIXI renderer
         app.renderer.resolution = dpr;
@@ -314,7 +314,16 @@ export default function TarotCanvas() {
         // 5) Reposition labels to match the new card positions after rescaling
         //    (only if cards have been dealt)
         if (spritesRef.current.length > 0) {
-          repositionLabels(spritesRef);
+          // Simplified label repositioning for debugging mobile issues
+          for (const entity of spritesRef.current) {
+            const lbl = (entity as any).__label as PIXI.Text | undefined;
+            if (lbl && entity.body && entity.front) {
+              const { x, y } = entity.body.position;
+              lbl.x = x;
+              lbl.y = y + entity.front.height / 2 + 5;
+              lbl.rotation = 0;
+            }
+          }
         }
 
         // (optional) If you want to react when the profile bucket changes:
@@ -435,9 +444,11 @@ export default function TarotCanvas() {
 
   // Read colorway from URL
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const c = url.searchParams.get("colorway") as Colorway | null;
-    if (c === "pink" || c === "grey") setColorway(c);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const c = url.searchParams.get("colorway") as Colorway | null;
+      if (c === "pink" || c === "grey") setColorway(c);
+    }
   }, [setColorway]);
 
   // Simplified dealToSpread function
