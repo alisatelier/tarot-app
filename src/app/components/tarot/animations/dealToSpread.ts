@@ -185,7 +185,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
   // Remove existing background
   if (bgRef.current) {
     pixiApp.stage.removeChild(bgRef.current);
-    bgRef.current.destroy(true);
+    // Don't call destroy() on assets, just remove from stage
     bgRef.current = null;
   }
 
@@ -414,9 +414,23 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         const lbl = (e as any).__label as PIXI.Text | undefined;
         if (!lbl) return;
         
-        const position = getLabelPosition(e, spread, currentProfile.id || "desktop");
-        lbl.x = position.x;
-        lbl.y = position.y;
+        // Check if this should be a side label during animation
+        const { x, y } = e.body.position;
+        const isMobile = currentProfile.id === "mobile";
+        const needsSideLabels = isMobile && 
+          (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
+        
+        if (needsSideLabels) {
+          // Side label: right of card, center vertically
+          const scale = e.view.scale.x || 1;
+          const actualCardWidth = e.front.width * scale;
+          lbl.x = x + actualCardWidth / 2 + 5;
+          lbl.y = y;
+        } else {
+          // Bottom label: below card, center horizontally
+          lbl.x = x;
+          lbl.y = y + e.front.height / 2 + 5;
+        }
         lbl.rotation = 0;
 
         // fade in after the card has moved a little (nice feel)
@@ -430,10 +444,25 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         const lbl = (e as any).__label as PIXI.Text | undefined;
         if (lbl) {
           lbl.alpha = 1;
-          // one last snap in case of rounding
-          const position = getLabelPosition(e, spread, currentProfile.id || "desktop");
-          lbl.x = position.x;
-          lbl.y = position.y;
+          // Check if this should be a side label
+          const { x, y } = e.body.position;
+          const isMobile = currentProfile.id === "mobile";
+          const needsSideLabels = isMobile && 
+            (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
+          
+          if (needsSideLabels) {
+            // Side label: right of card, center vertically
+            const scale = e.view.scale.x || 1;
+            const actualCardWidth = e.front.width * scale;
+            lbl.x = x + actualCardWidth / 2 + 5;
+            lbl.y = y;
+          } else {
+            // Bottom label: below card, use actual scaled dimensions with 5px spacing
+            const scale = e.view.scale.x || 1;
+            const actualCardHeight = e.front.height * scale;
+            lbl.x = x;
+            lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
+          }
         }
       },
     });
@@ -444,9 +473,25 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     const lbl = (entity as any).__label as PIXI.Text | undefined;
     if (!lbl) continue;
     
-    const position = getLabelPosition(entity, spread, currentProfile.id || "desktop");
-    lbl.x = position.x;
-    lbl.y = position.y;
+    // Check if this should be a side label for final positioning
+    const { x, y } = entity.body.position;
+    const isMobile = currentProfile.id === "mobile";
+    const needsSideLabels = isMobile && 
+      (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
+    
+    if (needsSideLabels) {
+      // Side label: right of card, center vertically
+      const scale = entity.view.scale.x || 1;
+      const actualCardWidth = entity.front.width * scale;
+      lbl.x = x + actualCardWidth / 2 + 5;
+      lbl.y = y;
+    } else {
+      // Bottom label: below card, use actual scaled dimensions with 5px spacing
+      const scale = entity.view.scale.x || 1;
+      const actualCardHeight = entity.front.height * scale;
+      lbl.x = x;
+      lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
+    }
     lbl.rotation = 0;
     lbl.alpha = 1; // reveal
   }
@@ -525,10 +570,27 @@ export function repositionLabels(
     const lbl = (entity as any).__label as PIXI.Text | undefined;
     if (!lbl || !entity.body || !entity.front) continue;
     
-    // Use simple fallback positioning for now to fix mobile issues
     const { x, y } = entity.body.position;
-    lbl.x = x;
-    lbl.y = y + entity.front.height / 2 + 5;
+    
+    // Check if this should be a side label (mobile + specific spreads)
+    const currentProfile = profileRef?.current;
+    const isMobile = currentProfile?.id === "mobile";
+    const needsSideLabels = isMobile && spread && 
+      (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
+    
+    if (needsSideLabels) {
+      // Side label: right of card, center vertically
+      const scale = entity.view.scale.x || 1;
+      const actualCardWidth = entity.front.width * scale;
+      lbl.x = x + actualCardWidth / 2 + 5;
+      lbl.y = y;
+    } else {
+      // Bottom label: below card, use actual scaled dimensions with 5px spacing
+      const scale = entity.view.scale.x || 1;
+      const actualCardHeight = entity.front.height * scale;
+      lbl.x = x;
+      lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
+    }
     lbl.rotation = 0;
   }
 }

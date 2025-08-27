@@ -14,6 +14,7 @@ export function preScaleEntityForProfile(
   const targetWidth = app.screen.width * profile.baseWidthRel;
   const preScale = targetWidth / Math.max(1, defaultCardW);
 
+  // Use entity.view instead of entity.canvas
   const cur = entity.view.scale.x || 1;
   if (Math.abs(cur - preScale) > 1e-3) {
     entity.view.scale.set(preScale, preScale);

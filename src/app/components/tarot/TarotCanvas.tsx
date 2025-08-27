@@ -226,10 +226,10 @@ export default function TarotCanvas() {
       labelLayerRef.current = labelLayer;
 
       if (containerRef.current) {
-        containerRef.current.appendChild(app.view as HTMLCanvasElement);
+        containerRef.current.appendChild(app.canvas as HTMLCanvasElement);
       }
 
-      const canvasEl = app.view as HTMLCanvasElement;
+      const canvasEl = app.canvas as HTMLCanvasElement;
       canvasEl.style.display = "block";
       canvasEl.style.width = "100%";
       canvasEl.style.height = "100%";
@@ -314,13 +314,34 @@ export default function TarotCanvas() {
         // 5) Reposition labels to match the new card positions after rescaling
         //    (only if cards have been dealt)
         if (spritesRef.current.length > 0) {
-          // Simplified label repositioning for debugging mobile issues
+          // Smart label repositioning that respects side vs bottom placement
           for (const entity of spritesRef.current) {
             const lbl = (entity as any).__label as PIXI.Text | undefined;
             if (lbl && entity.body && entity.front) {
               const { x, y } = entity.body.position;
-              lbl.x = x;
-              lbl.y = y + entity.front.height / 2 + 5;
+              
+              // Check if this should be a side label (mobile + specific spreads)
+              const isMobile = nextProfile.id === "mobile";
+              
+              // Use live spreadId directly from store to avoid closure issues
+              const storeSpreadId = useTarotStore.getState().spreadId;
+              const needsSideLabels = isMobile && 
+                (storeSpreadId === "ppf" || storeSpreadId === "pphao" || storeSpreadId === "gsbbl");
+              
+              
+              if (needsSideLabels) {
+                // Side label: right of card, center vertically
+                const scale = entity.canvas.scale.x || 1;
+                const actualCardWidth = entity.front.width * scale;
+                lbl.x = x + actualCardWidth / 2 + 5;
+                lbl.y = y;
+              } else {
+                // Bottom label: below card, use actual scaled dimensions with 5px spacing
+                const scale = entity.canvas.scale.x || 1;
+                const actualCardHeight = entity.front.height * scale;
+                lbl.x = x;
+                lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
+              }
               lbl.rotation = 0;
             }
           }
@@ -356,6 +377,9 @@ export default function TarotCanvas() {
 
       app.ticker.add(() => {
         for (const s of spritesRef.current) {
+          // Ensure body exists before accessing its properties
+          if (!s.body) continue;
+          
           const { x, y } = s.body.position;
           const angle = s.body.angle;
 
@@ -368,6 +392,36 @@ export default function TarotCanvas() {
           if (s.zoomState !== "zoomed") {
             const rot = s.reversed ? angle + Math.PI : angle;
             s.view.rotation = rot;
+          }
+
+          // Sync label positions with card positions
+          const lbl = (s as any).__label as PIXI.Text | undefined;
+          if (lbl && s.body && s.front) {
+            // Check if this should be a side label (mobile + specific spreads)
+            const profile = profileRef.current;
+            const isMobile = profile?.id === "mobile";
+            
+            // Use live spreadId directly from store to avoid closure issues
+            const storeState = useTarotStore.getState();
+            const storeSpreadId = storeState.spreadId;
+            const needsSideLabels = isMobile && 
+              (storeSpreadId === "ppf" || storeSpreadId === "pphao" || storeSpreadId === "gsbbl");
+            
+            
+            if (needsSideLabels) {
+              // Side label: right of card, center vertically
+              const scale = s.view.scale.x || 1;
+              const actualCardWidth = s.front.width * scale;
+              lbl.x = x + actualCardWidth / 2 + 5;
+              lbl.y = y;
+            } else {
+              // Bottom label: below card, use actual scaled dimensions with 5px spacing
+              const scale = s.view.scale.x || 1;
+              const actualCardHeight = s.front.height * scale;
+              lbl.x = x;
+              lbl.y = y + actualCardHeight / 2 + 5;
+            }
+            lbl.rotation = 0;
           }
 
           s.front.visible = s.isFaceUp;
