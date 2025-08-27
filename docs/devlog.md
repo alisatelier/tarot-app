@@ -4,6 +4,9 @@ Quick running notes of what was happening at each commit or push.
 (Doesn’t need to be fancy—just a couple of lines helps.)
 
 ---
+## 2025-08-26 1735– Mobile/ Tablet Layout Optimization
+- Adjusted Mobile and Tablet card positioning.
+- Next Up: Fix text postitions.
 
 ## 2025-08-26 0703– Decrease distance between card and label
 - The ticker in TarotCanvas looped the sprite to match the physics body, which blocked the change of distance. resize() was then also blcoked and so was applyLayoutOverrides which modified target positions. Fixed by changing ticker.

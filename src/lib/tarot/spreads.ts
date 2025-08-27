@@ -155,14 +155,40 @@ export function horoscopeSpreadDef(startFromSeason = currentSeasonIndex()): Spre
   const rotated = [...ZODIAC.slice(startFromSeason), ...ZODIAC.slice(0, startFromSeason)];
   const topKeys = rotated.slice(0,6).map(s => s.toLowerCase());
   const botKeys = rotated.slice(6).map(s => s.toLowerCase());
+  
+  // Create desktop/tablet layout (2 rows of 6)
+  const desktopTabletSlots = [
+    ...row(25, topKeys),
+    ...row(65, botKeys),
+  ];
+  
+  // Create mobile layout (3 columns of 4 rows)
+  const mobileSlots = rotated.map((sign, index) => {
+    const col = index % 3; // 0, 1, 2 for columns
+    const row = Math.floor(index / 3); // 0, 1, 2, 3 for rows
+    const xPerc = 25 + (col * 25); // 25%, 50%, 75%
+    const yPerc = 10 + (row * 25); // 10%, 35%, 60%, 85% - increased spacing
+    
+    return {
+      profile: "mobile" as const,
+      idKey: sign.toLowerCase(),
+      cardLabel: sign,
+      xPerc,
+      yPerc,
+    };
+  });
+  
+  // Add profile tags to desktop/tablet slots
+  const profiledSlots = [
+    ...desktopTabletSlots.map(slot => ({ ...slot, profile: "desktop" as const })),
+    ...desktopTabletSlots.map(slot => ({ ...slot, profile: "tablet" as const })),
+    ...mobileSlots,
+  ];
+  
   return {
     id: "horoscope",
     title: "Horoscope (starts at current season)",
-    // Desktop/Tablet: 6 cards top row, 6 cards bottom row
-    slots: [
-      ...row(25, topKeys),
-      ...row(65, botKeys),
-    ],
+    slots: profiledSlots,
     categories: [], // Will use the static categories from SPREADS
   };
 }

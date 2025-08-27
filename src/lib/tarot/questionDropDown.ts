@@ -239,12 +239,12 @@ export const SPREADS: Spread[] = [
       { profile: "desktop", idKey: "focus-3", cardLabel: "Focus", xPerc: 50, yPerc: 35 },
       { profile: "desktop", idKey: "forward-3", cardLabel: "Moving Forward", xPerc: 30, yPerc: 65 },
       { profile: "desktop", idKey: "letgo-3", cardLabel: "Letting Go", xPerc: 70, yPerc: 65 },
-      { profile: "tablet", idKey: "past-3", cardLabel: "Past", xPerc: 30, yPerc: 65 },
-      { profile: "tablet", idKey: "present-3", cardLabel: "Present", xPerc: 50, yPerc: 65 },
-      { profile: "tablet", idKey: "future-3", cardLabel: "Future", xPerc: 70, yPerc: 65 },
-      { profile: "mobile", idKey: "past-3", cardLabel: "Past", xPerc: 30, yPerc: 65 },
-      { profile: "mobile", idKey: "present-3", cardLabel: "Present", xPerc: 50, yPerc: 65 },
-      { profile: "mobile", idKey: "future-3", cardLabel: "Future", xPerc: 70, yPerc: 65 },
+      { profile: "tablet", idKey: "focus-3", cardLabel: "Focus", xPerc: 50, yPerc: 35 },
+      { profile: "tablet", idKey: "forward-3", cardLabel: "Moving Forward", xPerc: 30, yPerc: 65 },
+      { profile: "tablet", idKey: "letgo-3", cardLabel: "Letting Go", xPerc: 70, yPerc: 65 },
+      { profile: "mobile", idKey: "focus-3", cardLabel: "Focus", xPerc: 50, yPerc: 35 },
+      { profile: "mobile", idKey: "forward-3", cardLabel: "Moving Forward", xPerc: 30, yPerc: 65 },
+      { profile: "mobile", idKey: "letgo-3", cardLabel: "Letting Go", xPerc: 70, yPerc: 65 },
     ],
     categories: [
       {
