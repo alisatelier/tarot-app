@@ -198,7 +198,7 @@ export default function TarotCanvas() {
         autoDensity: true,
       });
 
-      // Load assets
+      // Load assets - preload ALL colorways to avoid cache misses
       await PIXI.Assets.load([
         "/cards/canvas/Pink-Desktop.png",
         "/cards/canvas/Pink-Mobile.png",
@@ -206,11 +206,13 @@ export default function TarotCanvas() {
         "/cards/canvas/Grey-Mobile.png",
       ]);
 
-      const cw = colorway; // Use local state instead of store
+      // Preload both colorways to prevent "not found in cache" errors
       await PIXI.Assets.load([
         backSrcFor("pink"),
         backSrcFor("grey"),
-        ...ALL_CARD_IDS.map((id) => frontSrcFor(id, cw)),
+        // Load ALL card fronts for BOTH colorways
+        ...ALL_CARD_IDS.map((id) => frontSrcFor(id, "pink")),
+        ...ALL_CARD_IDS.map((id) => frontSrcFor(id, "grey")),
       ]);
 
       if (destroyed) return;
@@ -573,7 +575,7 @@ export default function TarotCanvas() {
           <div className="flex items-center gap-2">
             <span className="text-sm text-neutral-600">Deck Colour</span>
             <select
-              className="px-3 py-2 rounded-xl border"
+              className="px-3 py-2 rounded-md border"
               value={colorway}
               onChange={(e) => setColorway(e.target.value as Colorway)}
             >
@@ -584,7 +586,7 @@ export default function TarotCanvas() {
 
           <button
             onClick={dealToSpread}
-            className="px-4 py-2 rounded-xl bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
+            className="px-4 py-2 rounded-md bg-brandnavy text-white hover:bg-brandpink hover:text-black transition"
             disabled={dealing}
           >
             {dealing ? "Pulling..." : "Pull Spread"}

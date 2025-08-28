@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import SelectorBar from "../components/tarot/layouts/SelectorBar";
+import { SelectorBar } from "../components/tarot/layouts/SelectorBar";
 
 const TarotCanvas = dynamic(() => import("../components/tarot/TarotCanvas"), {
   ssr: false,

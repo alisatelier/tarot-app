@@ -1,86 +1,118 @@
-// src/app/components/tarot/IntentionPicker.tsx
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  SPREADS,
-  getSpreadById,
-  needsRelationshipName,
-  substituteVars,
-  type Spread,
-  type Intention,
-} from "../lib/spreads";
+import { useTarotStore } from "../useTarotStore";
+import { SPREADS } from "../lib/questionDropDown";
 
-type Props = {
-  spreadId: string;
-  selectedIntentionId: string | null;
-  relationshipName: string;
-  onSpreadChange: (id: string) => void;
-  onIntentionChange: (id: string) => void;
-  onRelationshipNameChange: (name: string) => void;
-  onCustomIntentionChange?: (text: string) => void;
-};
+interface DropDownIntentionProps {
+  spreadOnly?: boolean;
+}
 
-export default function DropDownIntention({
-  spreadId,
-  selectedIntentionId,
-  relationshipName,
-  onSpreadChange,
-  onIntentionChange,
-  onRelationshipNameChange,
-  onCustomIntentionChange,
-}: Props) {
-  const spread = useMemo(() => getSpreadById(spreadId, SPREADS), [spreadId]);
-  const [customIntentionText, setCustomIntentionText] = useState("");
+export function DropDownIntention({ spreadOnly = false }: DropDownIntentionProps) {
+  const {
+    spreadId,
+    selectedIntentionId,
+    customIntentionText,
+    relationshipName,
+    setSpreadId,
+    setSelectedIntentionId,
+    setCustomIntentionText,
+    setRelationshipName,
+  } = useTarotStore();
 
-  // Check if the selected intention is a custom "Write My Own" intention
-  const isCustomIntention = useMemo(() => {
-    return selectedIntentionId?.endsWith(":custom:own") || false;
-  }, [selectedIntentionId]);
+  // If spreadOnly is true, only render the spread selection
+  if (spreadOnly) {
+    return (
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          Spread:
+        </label>
+        <select
+          value={spreadId}
+          onChange={(e) => setSpreadId(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="">Select a spread...</option>
+          {SPREADS.map((spread) => (
+            <option key={spread.id} value={spread.id}>
+              {spread.title}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  // Original full component logic (kept for backward compatibility)
+  const currentSpread = SPREADS.find(spread => spread.id === spreadId);
+
+  const handleSpreadChange = (spreadId: string) => {
+    setSpreadId(spreadId);
+    // Reset intention when spread changes
+    setSelectedIntentionId("");
+    setCustomIntentionText("");
+    setRelationshipName("");
+  };
+
+  const handleIntentionChange = (intentionId: string) => {
+    setSelectedIntentionId(intentionId);
+    
+    // Clear custom text if not custom intention
+    if (!intentionId.includes(":custom:own")) {
+      setCustomIntentionText("");
+    }
+    
+    // Clear relationship name if new intention doesn't require it
+    const intention = currentSpread?.categories
+      .flatMap(cat => cat.intentions)
+      .find(int => int.id === intentionId);
+    
+    if (!intention?.requiresName) {
+      setRelationshipName("");
+    }
+  };
+
+  const selectedIntentionData = currentSpread?.categories
+    .flatMap(cat => cat.intentions)
+    .find(int => int.id === selectedIntentionId);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Spread select */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-neutral-600">Spread</span>
+    <div className="space-y-4">
+      {/* Spread Selection */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          Spread:
+        </label>
         <select
-          className="px-3 py-2 rounded-xl border"
           value={spreadId}
-          onChange={(e) => onSpreadChange(e.target.value)}
+          onChange={(e) => handleSpreadChange(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
-          {SPREADS.map((s: Spread) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
+          <option value="">Select a spread...</option>
+          {SPREADS.map((spread) => (
+            <option key={spread.id} value={spread.id}>
+              {spread.title}
             </option>
           ))}
         </select>
       </div>
 
-      {/* Intention select with category subheadings */}
-      {spread && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-600">Intention</span>
+      {/* Intention Selection (only show if spread is selected) */}
+      {spreadId && currentSpread && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Intention:
+          </label>
           <select
-            className="px-3 py-2 rounded-xl border min-w-[320px]"
-            value={selectedIntentionId ?? ""}
-            onChange={(e) => {
-              onIntentionChange(e.target.value);
-              // Clear custom text when switching away from custom intention
-              if (!e.target.value.endsWith(":custom:own")) {
-                setCustomIntentionText("");
-                onCustomIntentionChange?.("");
-              }
-            }}
+            value={selectedIntentionId || ""}
+            onChange={(e) => handleIntentionChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
-            <option value="" disabled>
-              Select an intention…
-            </option>
-
-            {spread.categories.map((cat) => (
-              <optgroup key={cat.id} label={cat.title}>
-                {cat.intentions.map((intent: Intention) => (
-                  <option key={intent.id} value={intent.id}>
-                    {substituteVars(intent.label, { relationshipName: "________" })}
+            <option value="">Select an intention...</option>
+            {currentSpread.categories.map((category) => (
+              <optgroup key={category.id} label={category.title}>
+                {category.intentions.map((intention) => (
+                  <option key={intention.id} value={intention.id}>
+                    {intention.label}
                   </option>
                 ))}
               </optgroup>
@@ -89,52 +121,37 @@ export default function DropDownIntention({
         </div>
       )}
 
-      {/* Custom intention text field when "Write My Own Intention" is selected */}
-      {isCustomIntention && (
-        <div className="flex flex-col gap-2">
-          <label htmlFor="custom-intention-text" className="text-sm text-neutral-600">
-           My Own Intention
+      {/* Custom Intention Text (only show for custom intentions) */}
+      {selectedIntentionId?.includes(":custom:own") && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Your Intention:
           </label>
           <textarea
-            id="custom-intention-text"
-            className="w-full min-h-[96px] max-h-[240px] rounded-xl border p-3 resize-y"
-            maxLength={150}
-            placeholder=" ✍️ Write your intention here..."
             value={customIntentionText}
-            onChange={(e) => {
-              setCustomIntentionText(e.target.value);
-              onCustomIntentionChange?.(e.target.value);
-            }}
+            onChange={(e) => setCustomIntentionText(e.target.value)}
+            placeholder="Write your intention here..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            rows={3}
           />
-          <div className="text-xs text-neutral-500">
-            {customIntentionText.length}/150 characters
-          </div>
         </div>
       )}
 
-      {/* Relationship name field if needed (but not for custom intentions) */}
-      {spread &&
-        selectedIntentionId &&
-        !isCustomIntention &&
-        (() => {
-          const intention = spread.categories
-            .flatMap((c) => c.intentions)
-            .find((i: Intention) => i.id === selectedIntentionId);
-          if (!intention) return null;
-          if (!needsRelationshipName(intention)) return null;
-          return (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-neutral-600">Name</span>
-              <input
-                className="px-3 py-2 rounded-xl border"
-                type="text"
-                placeholder="Enter their name"
-                value={relationshipName}
-                onChange={(e) => onRelationshipNameChange(e.target.value)}
-              />
-            </div>
-          );
-        })()}
+      {/* Relationship Name (only show for intentions that require it) */}
+      {selectedIntentionData?.requiresName && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Relationship Name:
+          </label>
+          <input
+            type="text"
+            value={relationshipName}
+            onChange={(e) => setRelationshipName(e.target.value)}
+            placeholder="Enter the name..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+      )}
     </div>
   );
 }
