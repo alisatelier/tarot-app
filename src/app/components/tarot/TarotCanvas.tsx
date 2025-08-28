@@ -28,18 +28,9 @@ import {
   getPathsForIntention,
 } from "./lib/spreads";
 
-//intention
-import { makeIntentionStore } from "./intention/useIntentionStore";
-import { useResolvedIntention } from "./intention/useResolvedIntention";
-import { flattenIntentions } from "./intention/flattenIntentions";
-
-const { Engine, Runner, Bodies, Composite, Body } = Matter;
-
-// Additional types for TarotCanvas
-type SlotAssignment = { slotKey: string; cardId: string; reversed: boolean };
+const { Engine, Runner, Bodies, Composite } = Matter;
 
 // Types
-type Target = { x: number; y: number; angle?: number };
 type SpriteEntity = {
   body: any;
   cardId: string;
@@ -78,7 +69,6 @@ export default function TarotCanvas() {
   const deckBodyRef = useRef<any>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const labelLayerRef = useRef<PIXI.Container | null>(null);
-  const [seed, setSeed] = useState<string | null>(null);
   const flippingRef = useRef<Set<SpriteEntity>>(new Set());
   const hoverAnimRef = useRef<Map<SpriteEntity, number>>(new Map());
   const currentZoomedCardRef = useRef<SpriteEntity | null>(null);
@@ -89,6 +79,10 @@ export default function TarotCanvas() {
   // Background loading state
   const [backgroundReady, setBackgroundReady] = useState(false);
   const backgroundPromiseRef = useRef<Promise<void> | null>(null);
+
+  // Minimal setters for dealToSpread (values are not used in TarotCanvas)
+  const setSeed = (_: string) => {}; // eslint-disable-line @typescript-eslint/no-unused-vars
+  const setAssignments = (_: any[]) => {}; // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Preload background images
   const preloadBackgrounds = async () => {
@@ -117,15 +111,11 @@ export default function TarotCanvas() {
     spreadId,
     selectedIntentionId,
     relationshipName,
-    setSpreadId,
-    setSelectedIntentionId,
-    setRelationshipName,
   } = useTarotStore();
 
   // Local state for missing properties (temporary)
   const [colorway, setColorway] = useState<Colorway>("pink");
   const [dealing, setDealing] = useState(false);
-  const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
 
   // Create a spread object from spreadId with proper slot data
   const spread = useMemo(() => {
@@ -303,7 +293,6 @@ export default function TarotCanvas() {
 
         // 3) Select the interface profile based on the NEW width
         const nextProfile = pickProfile(app.screen.width);
-        const changed = profileRef.current?.id !== nextProfile.id;
         profileRef.current = nextProfile;
 
         // 4) Recompute and apply base (non-zoom) card scale for this profile
@@ -323,8 +312,6 @@ export default function TarotCanvas() {
           for (const entity of spritesRef.current) {
             const lbl = (entity as any).__label as PIXI.Text | undefined;
             if (lbl && entity.body && entity.front) {
-              const { x, y } = entity.body.position;
-              
               // Check if this should be a side label (mobile + specific spreads)
               const isMobile = nextProfile.id === "mobile";
               
@@ -519,45 +506,6 @@ export default function TarotCanvas() {
     } finally {
       setDealing(false);
     }
-  };
-  const useIntentionStore = useMemo(
-    () => makeIntentionStore(spread.id),
-    [spread.id]
-  );
-
-  const intentions = useMemo(() => {
-    // Convert the complex spread to simplified format for flattenIntentions
-    const simpleSpread = {
-      id: spread.id,
-      title: spread.title,
-      slots: spread.slots,
-      categories: spread.categories.map((cat) => ({
-        id: cat.id,
-        title: cat.title,
-        intentions: cat.intentions.map((intention) => ({
-          id: intention.id,
-          kind: "simple" as const,
-          label: intention.label,
-          requiresName: intention.requiresName,
-        })),
-      })),
-    };
-    return flattenIntentions(simpleSpread, { relationshipName });
-  }, [spread, relationshipName]);
-
-  const resolvedIntention = useResolvedIntention(useIntentionStore);
-
-  const onPull = async () => {
-    const intention = resolvedIntention; // <-- exact string (custom or preset)
-    // If you have a startReading or LLM call here, pass it in:
-    // await startReading({ spreadId: spread.id, intention, ... })
-    await dealToSpread(); // if pull simply animates dealing, keep this too
-  };
-
-  const onSave = async () => {
-    const intention = resolvedIntention;
-    // await saveCurrentReading({ intention }); // add intention to your save payload
-    console.log("Save reading with intention:", intention);
   };
 
   return (
