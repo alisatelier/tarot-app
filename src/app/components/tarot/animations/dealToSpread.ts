@@ -23,6 +23,7 @@ import { pickProfile } from "../interfaces/profile.registry";
 import type { SpriteEntity } from "../utils/types";
 import { LabelPositioning } from "../utils/LabelPositioning";
 import type { TarotInterfaceProfile } from "../interfaces/types";
+import { getPixiFontFamily } from "../utils/fontLoader";
 
 const { Bodies, Composite } = Matter;
 
@@ -353,7 +354,7 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     const label = new PIXI.Text({
       text: labelText,
       style: new PIXI.TextStyle({
-        fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
+        fontFamily: getPixiFontFamily(),
         fontSize: 14,
         fill: 0xffffff,
         align: willBeSideLabel ? "left" : "center"

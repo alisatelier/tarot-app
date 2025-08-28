@@ -1,0 +1,19 @@
+/* Custom fonts for PIXI.js text labels */
+@font-face {
+  font-family: 'Bloverly';
+  src: url('/fonts/BLOVERLY.woff2') format('woff2'),
+       url('/fonts/BLOVERLY.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Ensure the font is loaded by creating an invisible element */
+.font-preloader {
+  font-family: 'Bloverly';
+  visibility: hidden;
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  font-size: 1px;
+}

@@ -27,8 +27,7 @@ import {
   thisOrThatSpreadDef,
   getPathsForIntention,
 } from "./lib/spreads";
-
-//intention
+import { waitForFont } from "./utils/fontLoader";
 import { makeIntentionStore } from "./intention/useIntentionStore";
 import { useResolvedIntention } from "./intention/useResolvedIntention";
 import { flattenIntentions } from "./intention/flattenIntentions";
@@ -90,7 +89,7 @@ export default function TarotCanvas() {
   const [backgroundReady, setBackgroundReady] = useState(false);
   const backgroundPromiseRef = useRef<Promise<void> | null>(null);
 
-  // Preload background images
+  // Preload background images and fonts
   const preloadBackgrounds = async () => {
     if (backgroundPromiseRef.current) {
       return backgroundPromiseRef.current;
@@ -105,7 +104,12 @@ export default function TarotCanvas() {
         bgPath("grey", 1080, 1920), // Mobile Grey
       ];
 
-      await PIXI.Assets.load(backgroundUrls);
+      // Load backgrounds and fonts in parallel
+      await Promise.all([
+        PIXI.Assets.load(backgroundUrls),
+        waitForFont('Bloverly', 3000) // Wait up to 3 seconds for custom font
+      ]);
+      
       setBackgroundReady(true);
     })();
 

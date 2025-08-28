@@ -1,0 +1,18 @@
+/* Test the custom font loading */
+.font-test {
+  font-family: 'Bloverly', sans-serif;
+  font-size: 24px;
+  margin: 20px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background: #f9f9f9;
+}
+
+.font-test-fallback {
+  font-family: 'Poppins', sans-serif;
+  font-size: 24px;
+  margin: 20px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background: #f9f9f9;
+}
