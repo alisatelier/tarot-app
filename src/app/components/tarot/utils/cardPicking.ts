@@ -1,4 +1,4 @@
-import { mulberry32, hashSeed } from "../../../../lib/tarot/rng";
+import { mulberry32, hashSeed } from "../lib/rng";
 import { ALL_CARD_IDS } from "../useTarotStore";
 
 export interface CardPick {

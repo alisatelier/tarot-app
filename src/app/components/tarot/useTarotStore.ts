@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { CARDS_CATALOG } from "../../../lib/tarot/cards";
+import { CARDS_CATALOG } from "./lib/cards";
 
 type TarotState = {
   // existing fields…

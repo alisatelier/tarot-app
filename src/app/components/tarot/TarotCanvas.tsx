@@ -5,6 +5,7 @@ import * as PIXI from "pixi.js";
 import Matter from "matter-js";
 import { useTarotStore, ALL_CARD_IDS } from "./useTarotStore";
 import { CardInteractions } from "./utils/CardInteractions";
+import { LabelPositioning } from "./utils/LabelPositioning";
 import { bgPath } from "./utils/background";
 import { pickProfile } from "./interfaces/profile.registry";
 import type { TarotInterfaceProfile } from "./interfaces/types";
@@ -12,13 +13,12 @@ import { recomputeAndApplyBaseScaleWithProfile } from "./interfaces/ResponsiveSi
 import {
   dealToSpread as runDealToSpread,
   drawGradientBg,
-  repositionLabels,
 } from "./animations/dealToSpread";
 import {
   frontSrcFor,
   backSrcFor,
   type Colorway,
-} from "../../../lib/tarot/cards";
+} from "./lib/cards";
 import {
   type Spread,
   SPREADS,
@@ -26,7 +26,7 @@ import {
   pathAVsBSpreadDef,
   thisOrThatSpreadDef,
   getPathsForIntention,
-} from "../../../lib/tarot/spreads";
+} from "./lib/spreads";
 
 //intention
 import { makeIntentionStore } from "./intention/useIntentionStore";
@@ -325,23 +325,9 @@ export default function TarotCanvas() {
               
               // Use live spreadId directly from store to avoid closure issues
               const storeSpreadId = useTarotStore.getState().spreadId;
-              const needsSideLabels = isMobile && 
-                (storeSpreadId === "ppf" || storeSpreadId === "pphao" || storeSpreadId === "gsbbl");
               
-              
-              if (needsSideLabels) {
-                // Side label: right of card, center vertically
-                const scale = entity.canvas.scale.x || 1;
-                const actualCardWidth = entity.front.width * scale;
-                lbl.x = x + actualCardWidth / 2 + 5;
-                lbl.y = y;
-              } else {
-                // Bottom label: below card, use actual scaled dimensions with 5px spacing
-                const scale = entity.canvas.scale.x || 1;
-                const actualCardHeight = entity.front.height * scale;
-                lbl.x = x;
-                lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
-              }
+              // Use the utility for consistent positioning
+              LabelPositioning.positionLabel(entity, storeSpreadId, isMobile, 5);
               lbl.rotation = 0;
             }
           }
@@ -404,24 +390,9 @@ export default function TarotCanvas() {
             // Use live spreadId directly from store to avoid closure issues
             const storeState = useTarotStore.getState();
             const storeSpreadId = storeState.spreadId;
-            const needsSideLabels = isMobile && 
-              (storeSpreadId === "ppf" || storeSpreadId === "pphao" || storeSpreadId === "gsbbl");
             
-            
-            if (needsSideLabels) {
-              // Side label: right of card, center vertically
-              const scale = s.view.scale.x || 1;
-              const actualCardWidth = s.front.width * scale;
-              lbl.x = x + actualCardWidth / 2 + 5;
-              lbl.y = y;
-            } else {
-              // Bottom label: below card, use actual scaled dimensions with 5px spacing
-              const scale = s.view.scale.x || 1;
-              const actualCardHeight = s.front.height * scale;
-              lbl.x = x;
-              lbl.y = y + actualCardHeight / 2 + 5;
-            }
-            lbl.rotation = 0;
+            // Use the utility for consistent positioning
+            LabelPositioning.positionLabel(s, storeSpreadId, isMobile, 5);
           }
 
           s.front.visible = s.isFaceUp;

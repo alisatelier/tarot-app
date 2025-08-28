@@ -1,6 +1,6 @@
 import * as PIXI from "pixi.js";
 import type { SpriteEntity } from "../utils/types";
-import type { Spread } from "../../../../lib/tarot/spreads";
+import type { Spread } from "../lib/spreads";
 
 // Structural ref so we don't import React types here
 export type RefLike<T> = { current: T };

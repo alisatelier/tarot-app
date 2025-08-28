@@ -1,6 +1,6 @@
 import type * as PIXI from "pixi.js";
 import type { TarotInterfaceProfile } from "./types";
-import type { Spread } from "../../../../lib/tarot/spreads";
+import type { Spread } from "../lib/spreads";
 
 // Reuse the same shape TarotCanvas uses for layout targets
 export type Target = { x: number; y: number; angle?: number };

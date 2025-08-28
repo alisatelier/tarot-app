@@ -1,6 +1,6 @@
 import type { TarotInterfaceProfile } from "./types";
 import { fitScaleToScreen } from "./types";
-import { getSlotsForProfile } from "../../../../lib/tarot/spreads";
+import { getSlotsForProfile } from "../lib/spreads";
 
 /** Create a profile without using `this` inside methods. */
 export function makeProfile(cfg: {

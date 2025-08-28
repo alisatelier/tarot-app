@@ -12,8 +12,8 @@ import {
   frontSrcFor,
   backSrcFor,
   type Colorway,
-} from "../../../../lib/tarot/cards";
-import type { Spread as SpreadType } from "../../../../lib/tarot/spreads";
+} from "../lib/cards";
+import type { Spread as SpreadType } from "../lib/spreads";
 import { computeSpawnPoint } from "../interfaces/deal.spawn";
 import { preScaleEntityForProfile } from "../interfaces/ResponsiveSizing";
 import { type Target, tweenCardToTarget } from "./cardTween";
@@ -21,6 +21,8 @@ import { computeHoroscopeTargets } from "../layouts/horoscope";
 import { applyLayoutOverrides } from "../interfaces/layout.overrides";
 import { pickProfile } from "../interfaces/profile.registry";
 import type { SpriteEntity } from "../utils/types";
+import { LabelPositioning } from "../utils/LabelPositioning";
+import type { TarotInterfaceProfile } from "../interfaces/types";
 
 const { Bodies, Composite } = Matter;
 
@@ -415,23 +417,10 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         if (!lbl) return;
         
         // Check if this should be a side label during animation
-        const { x, y } = e.body.position;
         const isMobile = currentProfile.id === "mobile";
-        const needsSideLabels = isMobile && 
-          (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
         
-        if (needsSideLabels) {
-          // Side label: right of card, center vertically
-          const scale = e.view.scale.x || 1;
-          const actualCardWidth = e.front.width * scale;
-          lbl.x = x + actualCardWidth / 2 + 5;
-          lbl.y = y;
-        } else {
-          // Bottom label: below card, center horizontally
-          lbl.x = x;
-          lbl.y = y + e.front.height / 2 + 5;
-        }
-        lbl.rotation = 0;
+        // Use the utility for consistent positioning
+        LabelPositioning.positionLabel(e, spread.id, isMobile, 5);
 
         // fade in after the card has moved a little (nice feel)
         if (t >= 0.15 && lbl.alpha < 1) {
@@ -444,112 +433,26 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         const lbl = (e as any).__label as PIXI.Text | undefined;
         if (lbl) {
           lbl.alpha = 1;
-          // Check if this should be a side label
-          const { x, y } = e.body.position;
+          // Use the utility for consistent positioning
           const isMobile = currentProfile.id === "mobile";
-          const needsSideLabels = isMobile && 
-            (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
-          
-          if (needsSideLabels) {
-            // Side label: right of card, center vertically
-            const scale = e.view.scale.x || 1;
-            const actualCardWidth = e.front.width * scale;
-            lbl.x = x + actualCardWidth / 2 + 5;
-            lbl.y = y;
-          } else {
-            // Bottom label: below card, use actual scaled dimensions with 5px spacing
-            const scale = e.view.scale.x || 1;
-            const actualCardHeight = e.front.height * scale;
-            lbl.x = x;
-            lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
-          }
+          LabelPositioning.positionLabel(e, spread.id, isMobile, 5);
         }
       },
     });
   }
 
   // Position labels under their cards now that bodies are at rest
+  const isMobile = currentProfile.id === "mobile";
   for (const entity of spritesRef.current) {
     const lbl = (entity as any).__label as PIXI.Text | undefined;
     if (!lbl) continue;
     
-    // Check if this should be a side label for final positioning
-    const { x, y } = entity.body.position;
-    const isMobile = currentProfile.id === "mobile";
-    const needsSideLabels = isMobile && 
-      (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
-    
-    if (needsSideLabels) {
-      // Side label: right of card, center vertically
-      const scale = entity.view.scale.x || 1;
-      const actualCardWidth = entity.front.width * scale;
-      lbl.x = x + actualCardWidth / 2 + 5;
-      lbl.y = y;
-    } else {
-      // Bottom label: below card, use actual scaled dimensions with 5px spacing
-      const scale = entity.view.scale.x || 1;
-      const actualCardHeight = entity.front.height * scale;
-      lbl.x = x;
-      lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
-    }
-    lbl.rotation = 0;
+    // Use the utility for consistent positioning
+    LabelPositioning.positionLabel(entity, spread.id, isMobile, 5);
     lbl.alpha = 1; // reveal
   }
 
   setDealing(false);
-}
-
-/**
- * Calculate label position based on spread type and profile
- */
-function getLabelPosition(
-  entity: SpriteEntity, 
-  spread: SpreadType, 
-  profileType: "mobile" | "tablet" | "desktop"
-): { x: number; y: number } {
-  const { x, y } = entity.body.position;
-  // Account for scaling when calculating actual rendered dimensions
-  const scale = entity.view.scale.x || 1;
-  const actualCardWidth = entity.front.width * scale;
-  const actualCardHeight = entity.front.height * scale;
-  
-  // Check if this is a mobile profile and if the spread needs side labels
-  const isMobile = profileType === "mobile";
-  const needsSideLabels = isMobile && 
-    (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
-  
-  if (needsSideLabels) {
-    // Side labels: align with card center, appear on the right side, 5px beside the card edge
-    // Note: x is card center (anchor 0.5), so x + actualCardWidth/2 = right edge
-    return {
-      x: x + actualCardWidth / 2 + 5, // Right edge of card + 5px 
-      y: y  // Center vertically with the card
-    };
-  } else {
-    // Bottom labels with specific distances based on spread
-    let distance = 20; // default distance (positive for below card)
-    
-    if (isMobile) {
-      switch (spread.id) {
-        case "fml":
-        case "kdk":
-        case "this-or-that":
-          distance = 5; // Reduce distance to 5px
-          break;
-        case "horoscope":
-          distance = 3; // Reduce distance to 3px
-          break;
-        default:
-          distance = 20; // Keep existing distance for other spreads
-          break;
-      }
-    }
-    
-    return {
-      x: x,
-      y: y + actualCardHeight / 2 + distance
-    };
-  }
 }
 
 /**
@@ -566,31 +469,10 @@ export function repositionLabels(
     return;
   }
 
-  for (const entity of spritesRef.current) {
-    const lbl = (entity as any).__label as PIXI.Text | undefined;
-    if (!lbl || !entity.body || !entity.front) continue;
-    
-    const { x, y } = entity.body.position;
-    
-    // Check if this should be a side label (mobile + specific spreads)
-    const currentProfile = profileRef?.current;
-    const isMobile = currentProfile?.id === "mobile";
-    const needsSideLabels = isMobile && spread && 
-      (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
-    
-    if (needsSideLabels) {
-      // Side label: right of card, center vertically
-      const scale = entity.view.scale.x || 1;
-      const actualCardWidth = entity.front.width * scale;
-      lbl.x = x + actualCardWidth / 2 + 5;
-      lbl.y = y;
-    } else {
-      // Bottom label: below card, use actual scaled dimensions with 5px spacing
-      const scale = entity.view.scale.x || 1;
-      const actualCardHeight = entity.front.height * scale;
-      lbl.x = x;
-      lbl.y = y + actualCardHeight / 2 + 5; // 5px below the scaled card edge
-    }
-    lbl.rotation = 0;
-  }
+  // Check if this should be a side label (mobile + specific spreads)
+  const currentProfile = profileRef?.current;
+  const isMobile = currentProfile?.id === "mobile";
+  
+  // Use the utility for consistent positioning
+  LabelPositioning.positionAllLabels(spritesRef.current, spread?.id, isMobile, 5);
 }

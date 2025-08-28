@@ -1,7 +1,7 @@
 import * as PIXI from "pixi.js";
 import { Bodies, Composite } from "matter-js";
 import type { SpriteEntity } from "./types";
-import type { Colorway } from "../../../../lib/tarot/cards";
+import type { Colorway } from "../lib/cards";
 
 /**
  * Card creation utilities

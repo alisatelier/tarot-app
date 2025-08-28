@@ -1,7 +1,7 @@
 // src/app/components/tarot/IntentionPicker.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   SPREADS,
   getSpreadById,
@@ -18,25 +18,17 @@ type Props = {
   onSpreadChange: (id: string) => void;
   onIntentionChange: (id: string) => void;
   onRelationshipNameChange: (name: string) => void;
-  onCustomIntentionChange?: (text: string) => void;
 };
 
-export default function DropDownIntention({
+export default function IntentionPicker({
   spreadId,
   selectedIntentionId,
   relationshipName,
   onSpreadChange,
   onIntentionChange,
   onRelationshipNameChange,
-  onCustomIntentionChange,
 }: Props) {
   const spread = useMemo(() => getSpreadById(spreadId, SPREADS), [spreadId]);
-  const [customIntentionText, setCustomIntentionText] = useState("");
-
-  // Check if the selected intention is a custom "Write My Own" intention
-  const isCustomIntention = useMemo(() => {
-    return selectedIntentionId?.endsWith(":custom:own") || false;
-  }, [selectedIntentionId]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -63,14 +55,7 @@ export default function DropDownIntention({
           <select
             className="px-3 py-2 rounded-xl border min-w-[320px]"
             value={selectedIntentionId ?? ""}
-            onChange={(e) => {
-              onIntentionChange(e.target.value);
-              // Clear custom text when switching away from custom intention
-              if (!e.target.value.endsWith(":custom:own")) {
-                setCustomIntentionText("");
-                onCustomIntentionChange?.("");
-              }
-            }}
+            onChange={(e) => onIntentionChange(e.target.value)}
           >
             <option value="" disabled>
               Select an intention…
@@ -89,33 +74,9 @@ export default function DropDownIntention({
         </div>
       )}
 
-      {/* Custom intention text field when "Write My Own Intention" is selected */}
-      {isCustomIntention && (
-        <div className="flex flex-col gap-2">
-          <label htmlFor="custom-intention-text" className="text-sm text-neutral-600">
-           My Own Intention
-          </label>
-          <textarea
-            id="custom-intention-text"
-            className="w-full min-h-[96px] max-h-[240px] rounded-xl border p-3 resize-y"
-            maxLength={150}
-            placeholder=" ✍️ Write your intention here..."
-            value={customIntentionText}
-            onChange={(e) => {
-              setCustomIntentionText(e.target.value);
-              onCustomIntentionChange?.(e.target.value);
-            }}
-          />
-          <div className="text-xs text-neutral-500">
-            {customIntentionText.length}/150 characters
-          </div>
-        </div>
-      )}
-
-      {/* Relationship name field if needed (but not for custom intentions) */}
+      {/* Relationship name field if needed */}
       {spread &&
         selectedIntentionId &&
-        !isCustomIntention &&
         (() => {
           const intention = spread.categories
             .flatMap((c) => c.intentions)
