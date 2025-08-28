@@ -485,16 +485,16 @@ export const SPREADS: Spread[] = [
     slots: [
   // desktop
      { profile: "desktop", idKey: "know-3",      cardLabel: "What I Know",        xPerc: 50, yPerc: 35 },
-      { profile: "desktop", idKey: "dontknow-3",  cardLabel: "What I Don't Know",  xPerc: 30, yPerc: 65 },
-      { profile: "desktop", idKey: "need-3",      cardLabel: "What I Need To Know",xPerc: 70, yPerc: 65 },
+      { profile: "desktop", idKey: "dontknow-3",  cardLabel: "What I Don't",  xPerc: 30, yPerc: 65 },
+      { profile: "desktop", idKey: "need-3",      cardLabel: "What I Need To",xPerc: 70, yPerc: 65 },
   // tablet
       { profile: "tablet",  idKey: "know-3",      cardLabel: "What I Know",        xPerc: 50, yPerc: 35 },
-      { profile: "tablet",  idKey: "dontknow-3",  cardLabel: "What I Don't Know",  xPerc: 30, yPerc: 65 },
-      { profile: "tablet",  idKey: "need-3",      cardLabel: "What I Need To Know",xPerc: 70, yPerc: 65 },
+      { profile: "tablet",  idKey: "dontknow-3",  cardLabel: "What I Don't",  xPerc: 30, yPerc: 65 },
+      { profile: "tablet",  idKey: "need-3",      cardLabel: "What I Need To",xPerc: 70, yPerc: 65 },
   // mobile
       { profile: "mobile",  idKey: "know-3",      cardLabel: "What I Know",        xPerc: 50, yPerc: 35 },
-      { profile: "mobile",  idKey: "dontknow-3",  cardLabel: "What I Don't Know",  xPerc: 30, yPerc: 65 },
-      { profile: "mobile",  idKey: "need-3",      cardLabel: "What I Need To Know",xPerc: 70, yPerc: 65 },
+      { profile: "mobile",  idKey: "dontknow-3",  cardLabel: "What I Don't",  xPerc: 30, yPerc: 65 },
+      { profile: "mobile",  idKey: "need-3",      cardLabel: "What I Need To", xPerc: 70, yPerc: 65 },
 ],
     categories: [
       {
