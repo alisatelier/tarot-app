@@ -169,6 +169,9 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     return;
   }
 
+  // Clear any locked label positions when dealing new cards
+  LabelPositioning.clearLockedPositions();
+
   // Get profile-specific slots for the current device
   const currentProfile = profileRef.current ?? pickProfile(appRef.current.screen.width);
   const profileSlots: SpreadType["slots"] = currentProfile.getSlotsForSpread(spread);
@@ -244,6 +247,9 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     defaultCardH,
     0.9
   );
+
+  // Set spawn point for label positioning detection
+  LabelPositioning.setSpawnPoint(spawnX, spawnY);
 
   // Create sprite entities
   for (let i = 0; i < profileSlots.length; i++) {
@@ -345,11 +351,11 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
       (spread.id === "ppf" || spread.id === "pphao" || spread.id === "gsbbl");
     
     const label = new PIXI.Text({
-      text: labelText, // Removed TEST marker
+      text: labelText,
       style: new PIXI.TextStyle({
         fontFamily: "Poppins, ui-sans-serif, system-ui, -apple-system",
         fontSize: 14,
-        fill: 0xffffff, // Back to white text
+        fill: 0xffffff,
         align: willBeSideLabel ? "left" : "center"
       }),
     });
@@ -419,8 +425,8 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         // Check if this should be a side label during animation
         const isMobile = currentProfile.id === "mobile";
         
-        // Use the utility for consistent positioning
-        LabelPositioning.positionLabel(e, spread.id, isMobile, 5);
+        // Position label during animation but don't lock it yet (cards are still moving)
+        LabelPositioning.positionLabel(e, spread.id, isMobile, 5, false);
 
         // fade in after the card has moved a little (nice feel)
         if (t >= 0.15 && lbl.alpha < 1) {
@@ -433,9 +439,9 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
         const lbl = (e as any).__label as PIXI.Text | undefined;
         if (lbl) {
           lbl.alpha = 1;
-          // Use the utility for consistent positioning
+          // Now lock the position since animation is complete
           const isMobile = currentProfile.id === "mobile";
-          LabelPositioning.positionLabel(e, spread.id, isMobile, 5);
+          LabelPositioning.positionLabel(e, spread.id, isMobile, 5, true);
         }
       },
     });
@@ -447,8 +453,8 @@ export async function dealToSpread(params: DealToSpreadParams): Promise<void> {
     const lbl = (entity as any).__label as PIXI.Text | undefined;
     if (!lbl) continue;
     
-    // Use the utility for consistent positioning
-    LabelPositioning.positionLabel(entity, spread.id, isMobile, 5);
+    // Final positioning with locking enabled (cards are in final positions)
+    LabelPositioning.positionLabel(entity, spread.id, isMobile, 5, true);
     lbl.alpha = 1; // reveal
   }
 

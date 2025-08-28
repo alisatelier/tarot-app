@@ -220,10 +220,15 @@ export default function TarotCanvas() {
       app.stage.sortableChildren = true;
 
       // Create a dedicated overlay layer for labels so they don't rotate with cards
-      const labelLayer = new PIXI.Container();
-      labelLayer.zIndex = 9999;
-      app.stage.addChild(labelLayer);
-      labelLayerRef.current = labelLayer;
+      // Use the same label layer approach as dealToSpread to ensure consistency
+      const stageAny = app.stage as any;
+      if (!stageAny.__labelLayer) {
+        const labelLayer = new PIXI.Container();
+        labelLayer.zIndex = 9999;
+        app.stage.addChild(labelLayer);
+        stageAny.__labelLayer = labelLayer;
+      }
+      labelLayerRef.current = stageAny.__labelLayer;
 
       if (containerRef.current) {
         containerRef.current.appendChild(app.canvas as HTMLCanvasElement);
@@ -326,8 +331,8 @@ export default function TarotCanvas() {
               // Use live spreadId directly from store to avoid closure issues
               const storeSpreadId = useTarotStore.getState().spreadId;
               
-              // Use the utility for consistent positioning
-              LabelPositioning.positionLabel(entity, storeSpreadId, isMobile, 5);
+              // Force recalculation during resize (clears locks and recalculates)
+              LabelPositioning.forceRecalculateLabel(entity, storeSpreadId, isMobile, 5);
               lbl.rotation = 0;
             }
           }
@@ -380,7 +385,7 @@ export default function TarotCanvas() {
             s.view.rotation = rot;
           }
 
-          // Sync label positions with card positions
+          // Sync label positions with card positions (with position locking)
           const lbl = (s as any).__label as PIXI.Text | undefined;
           if (lbl && s.body && s.front) {
             // Check if this should be a side label (mobile + specific spreads)
@@ -391,8 +396,9 @@ export default function TarotCanvas() {
             const storeState = useTarotStore.getState();
             const storeSpreadId = storeState.spreadId;
             
-            // Use the utility for consistent positioning
-            LabelPositioning.positionLabel(s, storeSpreadId, isMobile, 5);
+            // Use locked positioning to prevent jumping during flips
+            // Only recalculates position if card doesn't have a locked position yet
+            LabelPositioning.positionLabel(s, storeSpreadId, isMobile, 5, true);
           }
 
           s.front.visible = s.isFaceUp;
@@ -423,10 +429,15 @@ export default function TarotCanvas() {
     return () => {
       destroyed = true;
       if (cleanupRef.current) cleanupRef.current();
-      if (labelLayerRef.current) {
-        labelLayerRef.current.destroy({ children: true });
-        labelLayerRef.current = null;
+      // Clean up the shared label layer properly
+      if (appRef.current) {
+        const stageAny = appRef.current.stage as any;
+        if (stageAny.__labelLayer) {
+          stageAny.__labelLayer.destroy({ children: true });
+          stageAny.__labelLayer = null;
+        }
       }
+      labelLayerRef.current = null;
     };
   }, []);
 
