@@ -55,9 +55,13 @@ export class LabelPositioning {
       labelX = x + actualCardWidth / 2 + spacing;
       labelY = y + 0;
     } else {
-      // Bottom label: below card - use a simple fixed offset instead of complex calculations
+      // Bottom label: below card - use different offsets for mobile vs desktop
       labelX = x;
-      labelY = y + 120; // Fixed offset below card (about 100px for card + 20px spacing)
+      if (isMobile) {
+        labelY = y + 80; // Smaller offset for mobile (smaller cards)
+      } else {
+        labelY = y + 120; // Larger offset for desktop
+      }
     }
     
     // Apply position
